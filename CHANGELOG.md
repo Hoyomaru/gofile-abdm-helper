@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-09-06
+
+Selection and rate-limit robustness update.
+
+### Fixed
+
+- Expand GoFile row matching to support `data-item-id` and `data-uuid` in addition to the existing ID attributes.
+- Prefer visible content IDs when detecting the current folder before falling back to filename text matching.
+- Keep the **Items** fallback selector visible at all times so selection remains available when GoFile DOM row matching changes.
+- Make **Select All** fall back to the resolved root children instead of silently doing nothing when current-level detection is empty.
+- Allow visible GoFile rows to be selected provisionally before Helper resolve succeeds; reconcile those content IDs after a later successful resolve.
+- Pace recursive GoFile content requests at 0.75 seconds by default to reduce bursty API traffic while still stopping immediately on 429.
+
 ## [1.0.1] - 2026-09-05
 
 Rate-limit safety update.
