@@ -1,17 +1,29 @@
 # filename: tests/test_core.py
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from abdm import ABDMClient
 try:
-    from app import app
+    import app as app_module
+    app = app_module.app
 except ModuleNotFoundError as exc:
     if exc.name == 'flask':
+        app_module = None
         app = None
     else:
         raise
-from gofile import GoFileClient, InvalidContent, ResolvedFile, parse_content_id, sanitize_relative_path, sanitize_segment
+from gofile import (
+    GoFileClient,
+    InvalidContent,
+    RateLimited,
+    ResolvedFile,
+    ResolvedNode,
+    ResolveResult,
+    parse_content_id,
+    sanitize_relative_path,
+    sanitize_segment,
+)
 
 
 class ParseContentIdTests(unittest.TestCase):
@@ -203,6 +215,81 @@ class ResolveTests(unittest.TestCase):
             client.resolve("root123")
 
 
+class RateLimitSafetyTests(unittest.TestCase):
+    def test_guest_token_is_reused(self):
+        session = Mock()
+        response = Mock(status_code=200)
+        response.json.return_value = {"status": "ok", "data": {"token": "guest-token"}}
+        session.post.return_value = response
+        client = GoFileClient(session=session)
+
+        self.assertEqual(client._guest_token(), "guest-token")
+        self.assertEqual(client._guest_token(), "guest-token")
+        self.assertEqual(session.post.call_count, 1)
+
+    def test_guest_token_http_429_is_not_retried(self):
+        session = Mock()
+        response = Mock(status_code=429)
+        session.post.return_value = response
+        client = GoFileClient(session=session)
+
+        with self.assertRaises(RateLimited):
+            client._guest_token()
+        self.assertEqual(session.post.call_count, 1)
+
+    def test_guest_token_api_rate_limit_is_not_retried(self):
+        session = Mock()
+        response = Mock(status_code=200)
+        response.json.return_value = {"status": "error-rateLimit"}
+        session.post.return_value = response
+        client = GoFileClient(session=session)
+
+        with self.assertRaises(RateLimited):
+            client._guest_token()
+        self.assertEqual(session.post.call_count, 1)
+
+    def test_content_http_429_is_detected_before_json_decode(self):
+        session = Mock()
+        response = Mock(status_code=429)
+        response.json.side_effect = ValueError("HTML rate-limit page")
+        session.get.return_value = response
+        client = GoFileClient(session=session)
+        client.token = "guest-token"
+
+        with self.assertRaises(RateLimited):
+            client._request_folder_page("root123", password=None, page=1, window_offset=0)
+        response.json.assert_not_called()
+        self.assertEqual(session.get.call_count, 1)
+
+    def test_folder_rate_limit_is_not_retried(self):
+        client = GoFileClient(session=Mock())
+        client.token = "guest-token"
+        client._request_folder_page = Mock(side_effect=RateLimited("rate limited"))
+
+        with self.assertRaises(RateLimited):
+            client.fetch_folder("root123")
+        self.assertEqual(client._request_folder_page.call_count, 1)
+
+
+class HelperRateLimitStaticTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+
+    def test_helper_reuses_one_gofile_client(self):
+        self.assertIn("_gofile_client = GoFileClient()", self.source)
+        self.assertNotIn("result = GoFileClient().resolve", self.source)
+
+    def test_helper_serializes_resolves(self):
+        self.assertIn("_resolve_lock = threading.Lock()", self.source)
+        self.assertIn("with _resolve_lock:", self.source)
+
+    def test_helper_has_source_cache(self):
+        self.assertIn("_source_cache", self.source)
+        self.assertIn("password_digest = hashlib.sha256", self.source)
+
+
+
 class UserscriptStaticTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -231,6 +318,9 @@ class FlaskGuardTests(unittest.TestCase):
     def setUp(self):
         app.config.update(TESTING=True)
         self.client = app.test_client()
+        with app_module._cache_lock:
+            app_module._cache.clear()
+            app_module._source_cache.clear()
 
     def test_health_available(self):
         response = self.client.get("/health")
@@ -267,6 +357,29 @@ class FlaskGuardTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"]["code"], "invalid_queue_id")
+
+
+    def test_second_identical_resolve_uses_local_cache(self):
+        root = ResolvedNode(key="root-key", id="root123", type="folder", name="Root")
+        result = ResolveResult(content_id="root123", root_name="Root", root=root, files={})
+        headers = {"X-GoFile-ABDM": "1"}
+
+        with patch.object(app_module._gofile_client, "resolve", return_value=result) as resolve_mock:
+            first = self.client.post("/api/gofile/resolve", headers=headers, json={"content_id": "root123"})
+            second = self.client.post("/api/gofile/resolve", headers=headers, json={"content_id": "root123"})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(first.get_json()["cached"])
+        self.assertTrue(second.get_json()["cached"])
+        self.assertNotEqual(first.get_json()["resolve_id"], second.get_json()["resolve_id"])
+        self.assertEqual(resolve_mock.call_count, 1)
+
+    def test_password_cache_key_does_not_store_plaintext_password(self):
+        key = app_module._source_cache_key("root123", "very-secret-password")
+        self.assertEqual(key[0], "root123")
+        self.assertNotEqual(key[1], "very-secret-password")
+        self.assertEqual(len(key[1]), 64)
 
 
 if __name__ == "__main__":

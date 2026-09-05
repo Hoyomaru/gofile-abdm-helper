@@ -1,6 +1,7 @@
 # filename: app.py
 from __future__ import annotations
 
+import hashlib
 import secrets
 import threading
 import time
@@ -20,6 +21,7 @@ from gofile import (
     ResolveResult,
     WebsiteTokenRejected,
     WrongPassword,
+    parse_content_id,
 )
 
 HOST = "127.0.0.1"
@@ -40,7 +42,14 @@ class CacheEntry:
 
 
 _cache: Dict[str, CacheEntry] = {}
+_source_cache: Dict[tuple[str, str], CacheEntry] = {}
 _cache_lock = threading.Lock()
+_resolve_lock = threading.Lock()
+
+# One client per Helper process means the GoFile guest account/token and its
+# requests.Session are reused across resolves instead of creating a new account
+# for every page load.
+_gofile_client = GoFileClient()
 
 
 def _prune_cache() -> None:
@@ -49,6 +58,9 @@ def _prune_cache() -> None:
         expired = [key for key, entry in _cache.items() if entry.created_at < cutoff]
         for key in expired:
             _cache.pop(key, None)
+        expired_sources = [key for key, entry in _source_cache.items() if entry.created_at < cutoff]
+        for key in expired_sources:
+            _source_cache.pop(key, None)
 
 
 def _cache_put(result: ResolveResult) -> str:
@@ -64,6 +76,44 @@ def _cache_get(resolve_id: str) -> Optional[ResolveResult]:
     with _cache_lock:
         entry = _cache.get(resolve_id)
         return entry.result if entry else None
+
+
+def _source_cache_key(content_id: str, password: Optional[str]) -> tuple[str, str]:
+    # Keep plaintext passwords out of cache keys and memory structures. The
+    # digest only distinguishes different password-protected views of a content.
+    password_digest = hashlib.sha256(password.encode("utf-8")).hexdigest() if password else ""
+    return content_id, password_digest
+
+
+def _source_cache_get(key: tuple[str, str]) -> Optional[ResolveResult]:
+    _prune_cache()
+    with _cache_lock:
+        entry = _source_cache.get(key)
+        return entry.result if entry else None
+
+
+def _source_cache_put(key: tuple[str, str], result: ResolveResult) -> None:
+    _prune_cache()
+    with _cache_lock:
+        _source_cache[key] = CacheEntry(time.time(), result)
+
+
+def _resolve_payload(result: ResolveResult, resolve_id: str, *, cached: bool):
+    public_root = result.root.to_public_dict()
+    return jsonify(
+        {
+            "ok": True,
+            "resolve_id": resolve_id,
+            "expires_in": CACHE_TTL_SECONDS,
+            "cached": cached,
+            "content_id": result.content_id,
+            "root_name": result.root_name,
+            "root": public_root,
+            "top_level": [child.to_public_dict() for child in result.root.children],
+            "file_count": result.root.file_count,
+            "total_size": result.root.total_size,
+        }
+    )
 
 
 def _api_error(message: str, code: str, status: int):
@@ -111,22 +161,25 @@ def gofile_resolve():
         return _api_error("Password must be a string.", "invalid_password", 400)
 
     try:
-        result = GoFileClient().resolve(source, password=password or None)
+        content_id = parse_content_id(source)
+        effective_password = password or None
+        source_key = _source_cache_key(content_id, effective_password)
+
+        result = _source_cache_get(source_key)
+        cached = result is not None
+        if result is None:
+            # Serialize recursive resolves. Once inside the lock, check the cache
+            # again so a request that waited behind an identical resolve can use
+            # the result without issuing any GoFile API requests of its own.
+            with _resolve_lock:
+                result = _source_cache_get(source_key)
+                cached = result is not None
+                if result is None:
+                    result = _gofile_client.resolve(content_id, password=effective_password)
+                    _source_cache_put(source_key, result)
+
         resolve_id = _cache_put(result)
-        public_root = result.root.to_public_dict()
-        return jsonify(
-            {
-                "ok": True,
-                "resolve_id": resolve_id,
-                "expires_in": CACHE_TTL_SECONDS,
-                "content_id": result.content_id,
-                "root_name": result.root_name,
-                "root": public_root,
-                "top_level": [child.to_public_dict() for child in result.root.children],
-                "file_count": result.root.file_count,
-                "total_size": result.root.total_size,
-            }
-        )
+        return _resolve_payload(result, resolve_id, cached=cached)
     except InvalidContent as exc:
         return _api_error(str(exc), exc.code, 400)
     except PasswordRequired as exc:
