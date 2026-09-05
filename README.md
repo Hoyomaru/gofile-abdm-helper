@@ -1,6 +1,6 @@
 # GoFile ABDM Helper
 
-**Stable release:** `v1.0.1`
+**Stable release:** `v1.0.2`
 
 Repository: `https://github.com/Hoyomaru/gofile-abdm-helper`
 
@@ -201,7 +201,9 @@ Right-click the tray icon and uncheck **Start with Windows**. This removes only 
 
 The Userscript resolves the current GoFile tree through the Python helper and then tries to attach checkboxes to the existing GoFile rows.
 
-The DOM integration intentionally does not hard-code one fragile GoFile row class. It prefers known identifiers/links and then uses a conservative filename match. If some rows cannot be matched after a GoFile frontend change, an **Items** button appears and opens a small fallback tree selector. It is not a separate application and is only a fallback for DOM mismatch.
+The DOM integration intentionally does not hard-code one fragile GoFile row class. It prefers known content identifiers (`data-content-id`, `data-id`, `data-item-id`, and `data-uuid`), then links, and finally a conservative filename match. The **Items** button is always available and opens a complete fallback tree selector, so selection does not depend on one specific GoFile row layout.
+
+If the Helper cannot resolve immediately (for example while GoFile is temporarily returning HTTP 429), visible GoFile rows can still be selected provisionally from their content IDs. The selected IDs are matched to the resolved tree after a later successful **Load** or immediately before sending. Actual sending still requires a successful resolve because ABDM needs the resolved direct link and headers.
 
 Selecting a folder selects all descendant files recursively. Folder selection counts and total size are computed from the helper-resolved tree.
 
@@ -339,9 +341,10 @@ The Helper deliberately minimizes repeated GoFile API traffic:
 - successful resolves are cached for 20 minutes by content ID and a SHA-256 password digest;
 - a repeated resolve of the same content within that window is served from local memory;
 - recursive resolves are serialized so two resolves do not run against GoFile at the same time;
+- recursive content requests are paced at 0.75 seconds by default to avoid request bursts;
 - HTTP/API rate-limit responses stop the resolve immediately and are not retried.
 
-Restarting the Helper clears these in-memory caches and creates a new guest session on the next resolve.
+Restarting the Helper clears these in-memory caches and creates a new guest session on the next resolve. The pacing interval can be overridden with `GOFILE_REQUEST_INTERVAL` (seconds); setting it to `0` disables pacing.
 
 ## Security
 
@@ -353,7 +356,7 @@ The helper intentionally applies the following restrictions:
 - There is no generic URL-fetch endpoint, preventing the helper from becoming an SSRF proxy.
 - API requests require the custom `X-GoFile-ABDM: 1` marker and JSON for POST requests; no permissive CORS headers are added.
 - GoFile-derived filenames/folder segments are sanitized before they are appended to a user-specified root.
-- `../`, `..\`, slashes, backslashes, NUL/control characters, Windows drive injection, trailing dots/spaces, and reserved Windows names are neutralized in GoFile-derived path segments.
+- `../`, `..\\`, slashes, backslashes, NUL/control characters, Windows drive injection, trailing dots/spaces, and reserved Windows names are neutralized in GoFile-derived path segments.
 - The user-selected save root itself is not rewritten beyond normalizing path separators for the ABDM API.
 - Guest tokens, Website Tokens, cookies, passwords, Authorization headers, and temporary direct URLs are not intentionally logged.
 - One task failure does not stop the remaining tasks.
@@ -417,7 +420,7 @@ GoFile likely changed the Website Token salt or browser-validation inputs. Updat
 
 ### Rate limit
 
-The helper does **not** retry GoFile rate-limit responses. A 429/API rate-limit response stops the current recursive resolve immediately. Wait before trying again; repeated identical resolves within the 20-minute cache window are served from local memory without another GoFile API request.
+The helper does **not** retry GoFile rate-limit responses. Recursive content requests are spaced by 0.75 seconds by default, and a 429/API rate-limit response stops the current recursive resolve immediately. Wait before trying again; repeated identical resolves within the 20-minute cache window are served from local memory without another GoFile API request.
 
 ### Some checkboxes do not appear
 

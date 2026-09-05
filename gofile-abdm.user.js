@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         GoFile ABDM Helper
 // @namespace    https://github.com/Hoyomaru/gofile-abdm-helper
-// @version      1.0.0
+// @version      1.0.2
 // @description  Select GoFile files/folders on gofile.io and send them to AB Download Manager through a localhost helper.
 // @homepageURL  https://github.com/Hoyomaru/gofile-abdm-helper
 // @supportURL   https://github.com/Hoyomaru/gofile-abdm-helper/issues
@@ -37,6 +37,7 @@
     currentLevel: [],
     nodeByKey: new Map(),
     selectedKeys: new Set(),
+    provisionalSelectedIds: new Set(),
     failedFileKeys: [],
     lastSendPreserveStructure: true,
     lastSendQueueId: null,
@@ -233,7 +234,7 @@
       const value = document.getElementById('gab-url').value.trim();
       state.sourceUrl = value || window.location.href;
       state.password = null;
-      resolveContent();
+      resolveContent(true);
     });
     updateToolbar();
     return toolbar;
@@ -259,9 +260,43 @@
     return folders;
   }
 
+  function visibleContentIds(fmRoot) {
+    const ids = new Set();
+    const attrs = ['data-content-id', 'data-id', 'data-item-id', 'data-uuid'];
+    const validId = /^[A-Za-z0-9][A-Za-z0-9-]{5,127}$/;
+    for (const el of fmRoot.querySelectorAll(attrs.map((attr) => `[${attr}]`).join(','))) {
+      if (el.closest(`#${TOOLBAR_ID}`) || el.closest('.gab-check-wrap')) continue;
+      if (!el.getClientRects().length) continue;
+      for (const attr of attrs) {
+        const value = (el.getAttribute(attr) || '').trim();
+        if (validId.test(value)) ids.add(value);
+      }
+    }
+    return ids;
+  }
+
   function detectCurrentLevelNodes() {
     const fmRoot = document.querySelector('#fm-root');
     if (!fmRoot || !state.root) return Array.isArray(state.topLevel) ? state.topLevel : [];
+
+    // Prefer stable GoFile content IDs when the current DOM exposes them. Older
+    // and newer GoFile layouts have used different data-* names, so support the
+    // known variants before falling back to filename text matching.
+    const visibleIds = visibleContentIds(fmRoot);
+    if (visibleIds.size) {
+      let bestById = null;
+      let bestIdScore = 0;
+      for (const folder of folderNodes()) {
+        const children = folder.children || [];
+        if (!children.length) continue;
+        const score = children.reduce((count, child) => count + (visibleIds.has(child.id) ? 1 : 0), 0);
+        if (score > bestIdScore) {
+          bestById = folder;
+          bestIdScore = score;
+        }
+      }
+      if (bestById && bestIdScore > 0) return bestById.children || [];
+    }
 
     const visibleTexts = new Set();
     for (const el of fmRoot.querySelectorAll('a,button,span,div')) {
@@ -308,14 +343,19 @@
     const files = selectedFileKeys();
     let total = 0;
     for (const key of files) total += Number(state.nodeByKey.get(key)?.size || 0);
-    return { count: files.length, total };
+    if (!state.root && state.provisionalSelectedIds.size) {
+      return { count: state.provisionalSelectedIds.size, total: 0, provisional: true };
+    }
+    return { count: files.length, total, provisional: false };
   }
 
   function updateToolbar() {
     const toolbar = ensureToolbar();
     const stats = selectedStats();
     const summary = toolbar.querySelector('#gab-summary');
-    if (summary) summary.textContent = `Selected: ${stats.count} files / ${formatBytes(stats.total)}`;
+    if (summary) summary.textContent = stats.provisional
+      ? `Selected: ${stats.count} visible item(s) — pending resolve`
+      : `Selected: ${stats.count} files / ${formatBytes(stats.total)}`;
 
     const status = toolbar.querySelector('#gab-status');
     if (status) {
@@ -332,7 +372,7 @@
       sendFlat.disabled = state.sending || state.resolving || stats.count === 0;
     }
     const items = toolbar.querySelector('#gab-items');
-    if (items) items.classList.toggle('gab-hidden', state.unmatched === 0 && currentTopLevel().length > 0);
+    if (items) items.classList.remove('gab-hidden');
     syncInjectedCheckboxes();
   }
 
@@ -357,22 +397,23 @@
     return state.connected;
   }
 
-  function resetResolution() {
+  function resetResolution(preserveProvisional = false) {
     state.resolveId = null;
     state.root = null;
     state.topLevel = [];
     state.currentLevel = [];
     state.nodeByKey.clear();
     state.selectedKeys.clear();
+    if (!preserveProvisional) state.provisionalSelectedIds.clear();
     state.failedFileKeys = [];
     document.querySelectorAll(`.${CHECKBOX_CLASS}`).forEach((el) => el.closest('.gab-check-wrap')?.remove());
     updateToolbar();
   }
 
-  async function resolveContent() {
+  async function resolveContent(preserveProvisional = false) {
     if (state.resolving) return;
     state.resolving = true;
-    resetResolution();
+    resetResolution(preserveProvisional);
     ensureToolbar();
     setProgress(0, 0, 'Resolving GoFile content…', true);
     try {
@@ -387,6 +428,12 @@
       state.nodeByKey.clear();
       flattenTree(state.root);
       state.selectedKeys.clear();
+      if (state.provisionalSelectedIds.size) {
+        for (const node of state.nodeByKey.values()) {
+          if (state.provisionalSelectedIds.has(node.id)) state.selectedKeys.add(node.key);
+        }
+        state.provisionalSelectedIds.clear();
+      }
       injectCheckboxes();
       setProgress(0, 0, `Ready — ${data.file_count} files / ${formatBytes(data.total_size)}`, false);
     } catch (error) {
@@ -396,7 +443,7 @@
         state.resolving = false;
         if (password !== null) {
           state.password = password;
-          await resolveContent();
+          await resolveContent(true);
         }
         return;
       }
@@ -408,10 +455,69 @@
     }
   }
 
+  function discoverVisibleDomItems() {
+    const root = document.querySelector('#fm-root') || document.querySelector('#filemanager_itemslist');
+    if (!root) return [];
+    const attrs = ['data-content-id', 'data-item-id', 'data-uuid', 'data-id'];
+    const validId = /^[A-Za-z0-9][A-Za-z0-9-]{5,127}$/;
+    const items = [];
+    const usedRows = new Set();
+    for (const el of root.querySelectorAll(attrs.map((attr) => `[${attr}]`).join(','))) {
+      if (el.closest(`#${TOOLBAR_ID}`) || el.closest('.gab-check-wrap')) continue;
+      if (!el.getClientRects().length) continue;
+      let id = '';
+      for (const attr of attrs) {
+        const value = (el.getAttribute(attr) || '').trim();
+        if (validId.test(value)) { id = value; break; }
+      }
+      if (!id) continue;
+      const row = el.closest('tr,[role="row"],li,.item,.file-row,[class*="item"],[class*="row"]') || el.parentElement || el;
+      if (usedRows.has(row)) continue;
+      usedRows.add(row);
+      items.push({ id, row });
+    }
+    return items;
+  }
+
+  function injectProvisionalCheckboxes() {
+    document.querySelectorAll('.gab-check-wrap').forEach((el) => el.remove());
+    const items = discoverVisibleDomItems();
+    for (const item of items) {
+      const wrap = document.createElement('label');
+      wrap.className = 'gab-check-wrap';
+      wrap.title = 'Select visible GoFile item (will be matched after resolve)';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = CHECKBOX_CLASS;
+      checkbox.dataset.gabContentId = item.id;
+      checkbox.checked = state.provisionalSelectedIds.has(item.id);
+      checkbox.addEventListener('click', (event) => event.stopPropagation());
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) state.provisionalSelectedIds.add(item.id);
+        else state.provisionalSelectedIds.delete(item.id);
+        updateToolbar();
+      });
+      wrap.appendChild(checkbox);
+      if (item.row.tagName === 'TR') {
+        const cell = item.row.querySelector('td,th');
+        if (cell) cell.prepend(wrap);
+      } else {
+        item.row.prepend(wrap);
+      }
+    }
+    state.unmatched = items.length ? 0 : 1;
+    updateToolbar();
+  }
+
   function rowForNode(node) {
     const root = document.querySelector('#fm-root') || document.querySelector('main') || document.body;
     const escapedId = CSS.escape(node.id);
-    const exact = root.querySelector(`[data-content-id="${escapedId}"], [data-id="${escapedId}"]`);
+    const exact = root.querySelector([
+      `[data-content-id="${escapedId}"]`,
+      `[data-id="${escapedId}"]`,
+      `[data-item-id="${escapedId}"]`,
+      `[data-uuid="${escapedId}"]`,
+    ].join(','));
     const linked = exact || [...root.querySelectorAll('a[href]')].find((el) => (el.getAttribute('href') || '').includes(node.id));
     const candidates = linked ? [linked] : [...root.querySelectorAll('a,button,span,div')].filter((el) => {
       if (el.closest(`#${TOOLBAR_ID}`)) return false;
@@ -428,6 +534,10 @@
 
   function injectCheckboxes() {
     ensureToolbar();
+    if (!state.root) {
+      injectProvisionalCheckboxes();
+      return;
+    }
     document.querySelectorAll('.gab-check-wrap').forEach((el) => el.remove());
     let unmatched = 0;
     const used = new Set();
@@ -470,6 +580,12 @@
 
   function syncInjectedCheckboxes() {
     document.querySelectorAll(`.${CHECKBOX_CLASS}`).forEach((checkbox) => {
+      const contentId = checkbox.dataset.gabContentId;
+      if (contentId) {
+        checkbox.checked = state.provisionalSelectedIds.has(contentId);
+        checkbox.indeterminate = false;
+        return;
+      }
       const key = checkbox.dataset.gabKey;
       checkbox.checked = state.selectedKeys.has(key);
       const node = state.nodeByKey.get(key);
@@ -483,12 +599,25 @@
   }
 
   function selectAll() {
-    for (const node of currentTopLevel()) state.selectedKeys.add(node.key);
+    let nodes = currentTopLevel();
+    if (!nodes.length && state.root) nodes = state.root.children || [];
+    if (!nodes.length) {
+      const visible = discoverVisibleDomItems();
+      if (!visible.length) {
+        toast('No selectable GoFile rows are visible yet.', 'warning');
+        return;
+      }
+      for (const item of visible) state.provisionalSelectedIds.add(item.id);
+      updateToolbar();
+      return;
+    }
+    for (const node of nodes) state.selectedKeys.add(node.key);
     updateToolbar();
   }
 
   function clearSelection() {
     state.selectedKeys.clear();
+    state.provisionalSelectedIds.clear();
     state.failedFileKeys = [];
     updateToolbar();
   }
@@ -738,9 +867,15 @@
       queueId = getSelectedQueueId();
       state.lastSendQueueId = queueId;
     }
+    if (!retryOnly && !state.resolveId && state.provisionalSelectedIds.size) {
+      await resolveContent(true);
+      if (!state.resolveId && state.provisionalSelectedIds.size) {
+        return toast('Selection kept. GoFile resolve is still unavailable; try Send again later.', 'warning');
+      }
+    }
     let keys = retryOnly ? [...state.failedFileKeys] : selectedFileKeys();
     if (!keys.length) return toast(retryOnly ? 'No failed items to retry.' : 'No files selected.', 'warning');
-    if (!state.resolveId) return toast('Resolve the GoFile page first.', 'warning');
+    if (!state.resolveId) return toast('GoFile content could not be resolved yet.', 'warning');
 
     const connected = await checkABDM();
     if (!connected) return toast('AB Download Manager is offline.', 'error');
@@ -804,7 +939,7 @@
     clearTimeout(state.domTimer);
     state.domTimer = setTimeout(() => {
       ensureToolbar();
-      if (state.root) injectCheckboxes();
+      injectCheckboxes();
     }, 250);
   }
 
@@ -818,8 +953,9 @@
       state.password = null;
       const input = document.getElementById('gab-url');
       if (input) input.value = current;
-      if (/^https:\/\/gofile\.io\/d\//i.test(current)) resolveContent();
-      else resetResolution();
+      state.provisionalSelectedIds.clear();
+      if (/^https:\/\/gofile\.io\/d\//i.test(current)) resolveContent(false);
+      else resetResolution(false);
     }, 180);
   }
 
@@ -862,7 +998,8 @@
     hookHistory();
     observeFileManager();
     await checkABDM();
-    if (/^https:\/\/gofile\.io\/d\//i.test(window.location.href)) await resolveContent();
+    injectCheckboxes();
+    if (/^https:\/\/gofile\.io\/d\//i.test(window.location.href)) await resolveContent(false);
   }
 
   init();

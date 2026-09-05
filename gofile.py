@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, Optional
@@ -17,6 +18,7 @@ DEFAULT_TIMEOUT = 30
 CONTENT_TIMEOUT = 45
 PAGE_SIZE = 1000
 WT_WINDOW_SECONDS = 14_400
+DEFAULT_REQUEST_INTERVAL = 0.75
 
 # This is not a fixed Website Token. It is the current salt used to derive a
 # per-account, per-time-window X-Website-Token. The value was verified against
@@ -154,7 +156,25 @@ class GoFileClient:
         self.user_agent = os.getenv("GOFILE_USER_AGENT", DEFAULT_USER_AGENT).strip() or DEFAULT_USER_AGENT
         self.language = os.getenv("GOFILE_LANGUAGE", DEFAULT_LANGUAGE).strip() or DEFAULT_LANGUAGE
         self.wt_salt = os.getenv("GOFILE_WT_SALT", DEFAULT_WT_SALT).strip() or DEFAULT_WT_SALT
+        try:
+            interval = float(os.getenv("GOFILE_REQUEST_INTERVAL", str(DEFAULT_REQUEST_INTERVAL)))
+        except ValueError:
+            interval = DEFAULT_REQUEST_INTERVAL
+        self.request_interval = max(0.0, min(interval, 10.0))
+        self._pace_lock = threading.Lock()
+        self._last_content_request_at = 0.0
         self.token = ""
+
+    def _pace_content_request(self) -> None:
+        """Space GoFile content requests to avoid bursty recursive traversal."""
+        if self.request_interval <= 0:
+            return
+        with self._pace_lock:
+            now = time.monotonic()
+            wait = self.request_interval - (now - self._last_content_request_at)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_content_request_at = time.monotonic()
 
     def _guest_token(self) -> str:
         if self.token:
@@ -239,6 +259,7 @@ class GoFileClient:
         if password_hash:
             params["password"] = password_hash
 
+        self._pace_content_request()
         response = self.session.get(
             f"{API_ORIGIN}/contents/{content_id}",
             headers=self._content_headers(window_offset),

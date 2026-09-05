@@ -270,6 +270,16 @@ class RateLimitSafetyTests(unittest.TestCase):
             client.fetch_folder("root123")
         self.assertEqual(client._request_folder_page.call_count, 1)
 
+    def test_content_request_pacing_spaces_bursts(self):
+        client = GoFileClient(session=Mock())
+        client.request_interval = 0.75
+        with patch("gofile.time.monotonic", side_effect=[10.0, 10.0, 10.2, 10.95]), \
+             patch("gofile.time.sleep") as sleep_mock:
+            client._pace_content_request()
+            client._pace_content_request()
+        sleep_mock.assert_called_once()
+        self.assertAlmostEqual(sleep_mock.call_args.args[0], 0.55, places=2)
+
 
 class HelperRateLimitStaticTests(unittest.TestCase):
     @classmethod
@@ -311,6 +321,25 @@ class UserscriptStaticTests(unittest.TestCase):
         self.assertIn("/api/abdm/queues", self.source)
         self.assertIn("queue_id: queueId", self.source)
         self.assertIn("Default (ABDM)", self.source)
+
+    def test_selection_fallback_supports_current_and_legacy_row_ids(self):
+        self.assertIn("data-content-id", self.source)
+        self.assertIn("data-id", self.source)
+        self.assertIn("data-item-id", self.source)
+        self.assertIn("data-uuid", self.source)
+        self.assertIn("visibleContentIds", self.source)
+
+    def test_items_selector_is_always_available(self):
+        self.assertIn("items.classList.remove('gab-hidden')", self.source)
+
+    def test_select_all_has_resolved_tree_fallback(self):
+        self.assertIn("if (!nodes.length && state.root) nodes = state.root.children || []", self.source)
+
+    def test_selection_works_before_helper_resolve(self):
+        self.assertIn("provisionalSelectedIds", self.source)
+        self.assertIn("discoverVisibleDomItems", self.source)
+        self.assertIn("checkbox.dataset.gabContentId", self.source)
+        self.assertIn("await resolveContent(true)", self.source)
 
 
 @unittest.skipIf(app is None, 'Flask is not installed in this execution environment')
