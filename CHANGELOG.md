@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [1.0.0] - 2026-09-05
+
+Initial stable release.
+
+### Features
+
+- GoFile page integration through a Violentmonkey/Tampermonkey Userscript.
+- File and folder selection with recursive folder resolution.
+- GoFile guest access, dynamic Website Token handling, password-protected content, UUID content IDs, and rate-limit retry.
+- AB Download Manager task registration through the documented localhost REST API.
+- Hierarchy-preserving and Flat send modes.
+- Save-folder presets and ABDM queue selection.
+- Per-file send results and Retry Failed.
+- Windows system-tray launcher with per-user startup at login.
+- Localhost-only helper, path sanitization, SSRF restrictions, and secret-safe logging behavior.

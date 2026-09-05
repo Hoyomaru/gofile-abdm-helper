@@ -1,0 +1,26 @@
+Reference-project notices
+=========================
+
+This project was implemented from scratch. No third-party source file is
+included or copied verbatim. The projects below were reviewed as behavioral,
+API, and architecture references.
+
+1. ewigl/gofile-enhanced
+   https://github.com/ewigl/gofile-enhanced
+   The current Userscript metadata declares: @license MIT
+   Referenced concepts: GoFile page integration, GM APIs, toolbar/popup/toast
+   integration, recursive-folder workflow, ABDM task registration.
+
+2. martadams89/gofile-dl
+   https://github.com/martadams89/gofile-dl
+   License: MIT
+   Referenced concepts: guest token creation, dynamic Website Token derivation,
+   Content API behavior, password hashing, recursive traversal and retry logic.
+
+3. amir1376/ab-download-manager
+   https://github.com/amir1376/ab-download-manager
+   License: Apache License 2.0
+   Referenced artifact: REST-API.yml and the documented localhost REST API.
+
+GoFile is a third-party service. AB Download Manager is a third-party
+application. Their names are used only to describe interoperability.
