@@ -174,12 +174,22 @@ class GoFileClient:
                     headers=headers,
                     timeout=DEFAULT_TIMEOUT,
                 )
+                if response.status_code == 429:
+                    raise RateLimited("GoFile rate limit reached while creating a guest session.")
                 response.raise_for_status()
                 payload = response.json()
-                if payload.get("status") == "ok" and payload.get("data", {}).get("token"):
+                status = str(payload.get("status") or "")
+                status_lower = status.lower()
+                if "ratelimit" in status_lower or "rate_limit" in status_lower:
+                    raise RateLimited("GoFile rate limit reached while creating a guest session.")
+                if status == "ok" and payload.get("data", {}).get("token"):
                     self.token = str(payload["data"]["token"])
                     return self.token
                 raise GoFileError("GoFile did not issue a guest token.")
+            except RateLimited:
+                # A device/IP rate limit should stop the operation immediately.
+                # Retrying here only adds more requests while GoFile is throttling us.
+                raise
             except (requests.RequestException, ValueError, GoFileError) as exc:
                 last_error = exc
                 if attempt < 2:
@@ -236,13 +246,15 @@ class GoFileClient:
             timeout=CONTENT_TIMEOUT,
         )
 
+        if response.status_code == 429:
+            # Some throttling responses may be HTML rather than JSON, so check
+            # the HTTP status before attempting to decode the response body.
+            raise RateLimited("GoFile rate limit reached.")
+
         try:
             payload = response.json()
         except ValueError as exc:
             raise GoFileError(f"GoFile returned HTTP {response.status_code} with a non-JSON response.") from exc
-
-        if response.status_code == 429:
-            raise RateLimited("GoFile rate limit reached.")
 
         status = str(payload.get("status") or "")
         status_lower = status.lower()
@@ -264,7 +276,7 @@ class GoFileClient:
         raise GoFileError(f"GoFile API error: {_safe_error_status(status)}")
 
     def fetch_folder(self, content_id: str, password: Optional[str] = None) -> Dict[str, Any]:
-        """Fetch one folder, including pagination and rate-limit retries."""
+        """Fetch one folder with pagination; never retry a GoFile rate limit."""
         content_id = parse_content_id(content_id)
         merged: Optional[Dict[str, Any]] = None
         page = 1
@@ -283,11 +295,9 @@ class GoFileClient:
                         window_offset=window_offset,
                     )
                     break
-                except RateLimited as exc:
-                    last_error = exc
-                    if attempt < 3:
-                        time.sleep(2.0 * (attempt + 1))
-                        continue
+                except RateLimited:
+                    # Stop the entire recursive resolve on the first 429/rate-limit
+                    # response instead of multiplying requests with retries.
                     raise
                 except WebsiteTokenRejected:
                     if attempt == 0:

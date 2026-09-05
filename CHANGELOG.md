@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2026-09-05
+
+Rate-limit safety update.
+
+### Fixed
+
+- Reuse one GoFile guest session/token for the lifetime of the Python Helper.
+- Cache resolved GoFile content for 20 minutes by content ID and password digest, so repeated page resolves can use zero GoFile API requests.
+- Stop immediately on GoFile HTTP/API rate-limit responses instead of retrying them.
+- Serialize recursive GoFile resolves to prevent overlapping resolve bursts.
+
 ## [1.0.0] - 2026-09-05
 
 Initial stable release.

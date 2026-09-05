@@ -1,6 +1,6 @@
 # GoFile ABDM Helper
 
-**Stable release:** `v1.0.0`
+**Stable release:** `v1.0.1`
 
 Repository: `https://github.com/Hoyomaru/gofile-abdm-helper`
 
@@ -30,7 +30,7 @@ The implementation was written from scratch after reviewing the current default 
   - This project does **not** copy its downloader-choice UI or its `unsafeWindow` / `Object.prototype` FileManager interception. The helper resolves GoFile content instead, and DOM matching has a small fallback selection popup.
 - `martadams89/gofile-dl` — default branch `main`
   - Guest account creation via `POST https://api.gofile.io/accounts`.
-  - Dynamic `X-Website-Token` derivation, matching `User-Agent` / `X-BL`, SHA-256 password handling, recursion, UUID content IDs, and rate-limit retry behavior.
+  - Dynamic `X-Website-Token` derivation, matching `User-Agent` / `X-BL`, SHA-256 password handling, recursion, UUID content IDs, and rate-limit handling.
   - This project does **not** reuse its Flask UI, downloader, Docker/CLI/task/history features, or file transfer logic.
 - `amir1376/ab-download-manager` — default branch `master`
   - The current `REST-API.yml` documents `GET /queues` and `POST /start-headless-download`.
@@ -331,6 +331,18 @@ The Userscript checks connection status:
 
 It does not continuously poll ABDM.
 
+## GoFile request / rate-limit behavior
+
+The Helper deliberately minimizes repeated GoFile API traffic:
+
+- one guest GoFile session/token is reused while the Helper process is running;
+- successful resolves are cached for 20 minutes by content ID and a SHA-256 password digest;
+- a repeated resolve of the same content within that window is served from local memory;
+- recursive resolves are serialized so two resolves do not run against GoFile at the same time;
+- HTTP/API rate-limit responses stop the resolve immediately and are not retried.
+
+Restarting the Helper clears these in-memory caches and creates a new guest session on the next resolve.
+
 ## Security
 
 The helper intentionally applies the following restrictions:
@@ -341,7 +353,7 @@ The helper intentionally applies the following restrictions:
 - There is no generic URL-fetch endpoint, preventing the helper from becoming an SSRF proxy.
 - API requests require the custom `X-GoFile-ABDM: 1` marker and JSON for POST requests; no permissive CORS headers are added.
 - GoFile-derived filenames/folder segments are sanitized before they are appended to a user-specified root.
-- `../`, `..\\`, slashes, backslashes, NUL/control characters, Windows drive injection, trailing dots/spaces, and reserved Windows names are neutralized in GoFile-derived path segments.
+- `../`, `..\`, slashes, backslashes, NUL/control characters, Windows drive injection, trailing dots/spaces, and reserved Windows names are neutralized in GoFile-derived path segments.
 - The user-selected save root itself is not rewritten beyond normalizing path separators for the ABDM API.
 - Guest tokens, Website Tokens, cookies, passwords, Authorization headers, and temporary direct URLs are not intentionally logged.
 - One task failure does not stop the remaining tasks.
@@ -405,7 +417,7 @@ GoFile likely changed the Website Token salt or browser-validation inputs. Updat
 
 ### Rate limit
 
-The helper retries GoFile rate limits with short backoff. If the limit persists, wait before retrying rather than sending repeated requests.
+The helper does **not** retry GoFile rate-limit responses. A 429/API rate-limit response stops the current recursive resolve immediately. Wait before trying again; repeated identical resolves within the 20-minute cache window are served from local memory without another GoFile API request.
 
 ### Some checkboxes do not appear
 
