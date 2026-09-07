@@ -1,6 +1,6 @@
 # GoFile ABDM Helper
 
-**Stable release:** `v1.0.2`
+**Stable release:** `v1.0.3`
 
 Repository: `https://github.com/Hoyomaru/gofile-abdm-helper`
 

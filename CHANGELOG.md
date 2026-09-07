@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-09-08
+
+Review regression fixes.
+
+### Fixed
+
+- Restore provisional row checkboxes when GoFile resolve fails, including cases where the page DOM does not change afterward.
+- Remove the fixed 180-second Userscript deadline from recursive resolve requests while retaining the Helper's per-request GoFile API timeouts.
+- Add regression coverage for 242 paced content requests (180.75 seconds), failed-resolve checkbox restoration, and recursive resolve without a Userscript deadline.
+
 ## [1.0.2] - 2026-09-06
 
 Selection and rate-limit robustness update.
