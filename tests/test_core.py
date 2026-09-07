@@ -280,6 +280,24 @@ class RateLimitSafetyTests(unittest.TestCase):
         sleep_mock.assert_called_once()
         self.assertAlmostEqual(sleep_mock.call_args.args[0], 0.55, places=2)
 
+    def test_242_content_requests_accumulate_180_75_seconds_of_pacing(self):
+        client = GoFileClient(session=Mock())
+        client.request_interval = 0.75
+        now = [100.0]
+
+        def monotonic():
+            return now[0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        with patch("gofile.time.monotonic", side_effect=monotonic), \
+             patch("gofile.time.sleep", side_effect=sleep):
+            for _ in range(242):
+                client._pace_content_request()
+
+        self.assertAlmostEqual(now[0] - 100.0, 180.75, places=6)
+
 
 class HelperRateLimitStaticTests(unittest.TestCase):
     @classmethod
@@ -340,6 +358,20 @@ class UserscriptStaticTests(unittest.TestCase):
         self.assertIn("discoverVisibleDomItems", self.source)
         self.assertIn("checkbox.dataset.gabContentId", self.source)
         self.assertIn("await resolveContent(true)", self.source)
+
+    def test_resolve_failure_restores_provisional_checkboxes(self):
+        start = self.source.index("  async function resolveContent(")
+        end = self.source.index("  function discoverVisibleDomItems()", start)
+        resolve_block = self.source[start:end]
+        self.assertIn("if (!state.root) injectCheckboxes();", resolve_block)
+
+    def test_recursive_resolve_has_no_userscript_deadline(self):
+        start = self.source.index("  async function resolveContent(")
+        end = self.source.index("  function discoverVisibleDomItems()", start)
+        resolve_block = self.source[start:end]
+        self.assertIn("}, 0);", resolve_block)
+        self.assertNotIn("180000", resolve_block)
+        self.assertIn("...(timeout > 0 ? { timeout } : {}),", self.source)
 
 
 @unittest.skipIf(app is None, 'Flask is not installed in this execution environment')

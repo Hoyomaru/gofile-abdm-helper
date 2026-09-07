@@ -72,7 +72,7 @@
         },
         data: data !== null ? JSON.stringify(data) : undefined,
         responseType: 'json',
-        timeout,
+        ...(timeout > 0 ? { timeout } : {}),
         onload: (response) => {
           let payload = response.response;
           if (!payload && response.responseText) {
@@ -420,7 +420,7 @@
       const data = await gmRequest('POST', '/api/gofile/resolve', {
         url: state.sourceUrl,
         ...(state.password ? { password: state.password } : {}),
-      }, 180000);
+      }, 0);
       state.resolveId = data.resolve_id;
       state.root = data.root;
       state.topLevel = data.top_level || [];
@@ -451,6 +451,7 @@
       toast(error.message, 'error');
     } finally {
       state.resolving = false;
+      if (!state.root) injectCheckboxes();
       updateToolbar();
     }
   }
