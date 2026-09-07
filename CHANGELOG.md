@@ -1,53 +1,53 @@
-# Changelog
+# 変更履歴
 
-All notable changes to this project will be documented in this file.
+このプロジェクトの主な変更点をこのファイルに記録します。
 
 ## [1.0.3] - 2026-09-08
 
-Review regression fixes.
+レビューで確認された回帰問題の修正。
 
-### Fixed
+### 修正
 
-- Restore provisional row checkboxes when GoFile resolve fails, including cases where the page DOM does not change afterward.
-- Remove the fixed 180-second Userscript deadline from recursive resolve requests while retaining the Helper's per-request GoFile API timeouts.
-- Add regression coverage for 242 paced content requests (180.75 seconds), failed-resolve checkbox restoration, and recursive resolve without a Userscript deadline.
+- GoFile の resolve が失敗した場合、ページ DOM がその後変化しないケースを含め、暫定選択用の行チェックボックスを復元するよう修正。
+- Helper 側の各 GoFile API リクエストのタイムアウトは維持しつつ、再帰 resolve リクエストに設定されていた Userscript 側の固定 180 秒期限を削除。
+- 242 件の待機付き content リクエスト（180.75 秒）、resolve 失敗時のチェックボックス復元、Userscript 側期限なしの再帰 resolve に対する回帰テストを追加。
 
 ## [1.0.2] - 2026-09-06
 
-Selection and rate-limit robustness update.
+選択処理とレート制限耐性の改善。
 
-### Fixed
+### 修正
 
-- Expand GoFile row matching to support `data-item-id` and `data-uuid` in addition to the existing ID attributes.
-- Prefer visible content IDs when detecting the current folder before falling back to filename text matching.
-- Keep the **Items** fallback selector visible at all times so selection remains available when GoFile DOM row matching changes.
-- Make **Select All** fall back to the resolved root children instead of silently doing nothing when current-level detection is empty.
-- Allow visible GoFile rows to be selected provisionally before Helper resolve succeeds; reconcile those content IDs after a later successful resolve.
-- Pace recursive GoFile content requests at 0.75 seconds by default to reduce bursty API traffic while still stopping immediately on 429.
+- 既存の ID 属性に加えて `data-item-id` と `data-uuid` にも対応するよう GoFile 行マッチングを拡張。
+- 現在のフォルダを検出するとき、ファイル名テキスト一致へフォールバックする前に、表示中の content ID を優先するよう変更。
+- GoFile の DOM 行マッチングが変化しても選択機能を使えるよう、**Items** フォールバックセレクターを常時表示するよう変更。
+- 現在階層の検出結果が空の場合、**Select All** が何もせず終了するのではなく、解決済みルート直下の要素へフォールバックするよう修正。
+- Helper の resolve 成功前でも、表示中の GoFile 行を暫定的に選択できるよう変更。後の resolve 成功時に、それらの content ID を解決済みツリーと照合。
+- API へのバーストを抑えつつ 429 では即停止する挙動を維持するため、再帰的な GoFile content リクエストをデフォルト 0.75 秒間隔に変更。
 
 ## [1.0.1] - 2026-09-05
 
-Rate-limit safety update.
+レート制限対策の更新。
 
-### Fixed
+### 修正
 
-- Reuse one GoFile guest session/token for the lifetime of the Python Helper.
-- Cache resolved GoFile content for 20 minutes by content ID and password digest, so repeated page resolves can use zero GoFile API requests.
-- Stop immediately on GoFile HTTP/API rate-limit responses instead of retrying them.
-- Serialize recursive GoFile resolves to prevent overlapping resolve bursts.
+- Python Helper の稼働中は 1 つの GoFile ゲストセッション／トークンを再利用するよう変更。
+- 解決済み GoFile コンテンツを content ID とパスワードダイジェスト単位で 20 分間キャッシュし、同一ページの再 resolve では GoFile API リクエストを 0 件にできるよう変更。
+- GoFile の HTTP/API レート制限レスポンスを再試行せず、即座に停止するよう変更。
+- 再帰的な GoFile resolve を直列化し、resolve リクエストが重なってバーストしないよう修正。
 
 ## [1.0.0] - 2026-09-05
 
-Initial stable release.
+初回安定版リリース。
 
-### Features
+### 機能
 
-- GoFile page integration through a Violentmonkey/Tampermonkey Userscript.
-- File and folder selection with recursive folder resolution.
-- GoFile guest access, dynamic Website Token handling, password-protected content, UUID content IDs, and rate-limit retry.
-- AB Download Manager task registration through the documented localhost REST API.
-- Hierarchy-preserving and Flat send modes.
-- Save-folder presets and ABDM queue selection.
-- Per-file send results and Retry Failed.
-- Windows system-tray launcher with per-user startup at login.
-- Localhost-only helper, path sanitization, SSRF restrictions, and secret-safe logging behavior.
+- Violentmonkey/Tampermonkey Userscript による GoFile ページ統合。
+- ファイル／フォルダ選択と、フォルダの再帰解決。
+- GoFile ゲストアクセス、動的 Website Token 処理、パスワード保護コンテンツ、UUID content ID、レート制限時のリトライ。
+- 文書化済み localhost REST API を使った AB Download Manager へのタスク登録。
+- フォルダ階層保持モードと Flat 送信モード。
+- 保存先フォルダのプリセットと ABDM キュー選択。
+- ファイル単位の送信結果と Retry Failed。
+- ユーザー単位のログイン時自動起動に対応した Windows システムトレイランチャー。
+- localhost 専用ヘルパー、パスのサニタイズ、SSRF 制限、秘密情報を安全に扱うログ動作。

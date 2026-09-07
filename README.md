@@ -1,43 +1,43 @@
 # GoFile ABDM Helper
 
-**Stable release:** `v1.0.3`
+**安定版:** `v1.0.3`
 
-Repository: `https://github.com/Hoyomaru/gofile-abdm-helper`
+リポジトリ: `https://github.com/Hoyomaru/gofile-abdm-helper`
 
-A small personal-use tool that extends the **existing GoFile page** with a Userscript UI and sends selected GoFile files/folders to **AB Download Manager (ABDM)** through a localhost-only Python/Flask helper.
+**既存の GoFile ページ**に Userscript の UI を追加し、選択した GoFile のファイル／フォルダを localhost 専用の Python/Flask ヘルパー経由で **AB Download Manager (ABDM)** に送信する、個人利用向けの小さなツールです。
 
-There is **no standalone Flask web UI**. The normal workflow is:
+**独立した Flask Web UI はありません。** 通常の処理フローは次のとおりです。
 
 ```text
-GoFile page
+GoFile ページ
     ↓
-Userscript (checkboxes / toolbar / settings / progress)
+Userscript（チェックボックス / ツールバー / 設定 / 進捗）
     ↓ GM_xmlhttpRequest
 localhost Flask Helper (127.0.0.1:8765)
     ↓
 AB Download Manager (127.0.0.1:15151)
 ```
 
-Python never downloads the file body. It only resolves GoFile metadata/direct URLs and registers tasks in ABDM.
+Python 側がファイル本体をダウンロードすることはありません。GoFile のメタデータ／直接 URL を解決し、ABDM にダウンロードタスクを登録するだけです。
 
-## What this implementation is based on
+## この実装が参考にしているもの
 
-The implementation was written from scratch after reviewing the current default branches on 2026-09-05:
+この実装は、2026-09-05 時点の各リポジトリのデフォルトブランチを確認したうえで、ゼロから実装しています。
 
-- `ewigl/gofile-enhanced` — default branch `main`
-  - Current Userscript imports GoFile's `/js/services/contents.js` and `/js/ui/{menu,popup,toast}.js` and integrates around `#fm-toolbar` / `#fm-root`.
-  - This project borrows the **integration idea**, GM storage/request approach, and compact toolbar philosophy.
-  - This project does **not** copy its downloader-choice UI or its `unsafeWindow` / `Object.prototype` FileManager interception. The helper resolves GoFile content instead, and DOM matching has a small fallback selection popup.
-- `martadams89/gofile-dl` — default branch `main`
-  - Guest account creation via `POST https://api.gofile.io/accounts`.
-  - Dynamic `X-Website-Token` derivation, matching `User-Agent` / `X-BL`, SHA-256 password handling, recursion, UUID content IDs, and rate-limit handling.
-  - This project does **not** reuse its Flask UI, downloader, Docker/CLI/task/history features, or file transfer logic.
-- `amir1376/ab-download-manager` — default branch `master`
-  - The current `REST-API.yml` documents `GET /queues` and `POST /start-headless-download`.
-  - This project only sends documented fields: `downloadSource.link`, optional `downloadSource.headers`, optional `downloadSource.downloadPage`, optional `folder`, optional `name`, and optional `queueId`.
-  - Queue choices are read from the documented `GET /queues` endpoint; selecting **Default (ABDM)** omits `queueId`.
+- `ewigl/gofile-enhanced` — デフォルトブランチ `main`
+  - 現在の Userscript は GoFile の `/js/services/contents.js` と `/js/ui/{menu,popup,toast}.js` を import し、`#fm-toolbar` / `#fm-root` 周辺へ統合しています。
+  - このプロジェクトでは、**統合の考え方**、GM ストレージ／リクエストの使い方、コンパクトなツールバーという方針を参考にしています。
+  - downloader 選択 UI や、`unsafeWindow` / `Object.prototype` を使った FileManager のインターセプト処理はコピーしていません。代わりにヘルパー側で GoFile のコンテンツを解決し、DOM マッチングに失敗した場合は小さなフォールバック選択ポップアップを使用します。
+- `martadams89/gofile-dl` — デフォルトブランチ `main`
+  - `POST https://api.gofile.io/accounts` によるゲストアカウント作成。
+  - 動的な `X-Website-Token` 生成、`User-Agent` / `X-BL` の整合、SHA-256 パスワード処理、再帰、UUID コンテンツ ID、レート制限処理。
+  - このプロジェクトでは Flask UI、ダウンローダー、Docker/CLI/タスク/履歴機能、ファイル転送処理は再利用していません。
+- `amir1376/ab-download-manager` — デフォルトブランチ `master`
+  - 現在の `REST-API.yml` では `GET /queues` と `POST /start-headless-download` が文書化されています。
+  - このプロジェクトが送信するのは文書化済みフィールドのみです。`downloadSource.link`、任意の `downloadSource.headers`、任意の `downloadSource.downloadPage`、任意の `folder`、任意の `name`、任意の `queueId` を使用します。
+  - キュー一覧は文書化済みの `GET /queues` から取得します。**Default (ABDM)** を選択した場合は `queueId` を省略します。
 
-## Files
+## ファイル構成
 
 ```text
 project/
@@ -56,28 +56,28 @@ project/
     └── test_core.py
 ```
 
-No `templates/` or `static/` directory is used.
+`templates/` や `static/` ディレクトリは使用しません。
 
-## Requirements
+## 必要環境
 
 - Python 3.10+
-- Violentmonkey (primary target) or Tampermonkey
-- AB Download Manager with its local REST API/browser integration available on the default port `15151`
-- A normal network connection that can reach GoFile
+- Violentmonkey（主な対象）または Tampermonkey
+- デフォルトポート `15151` でローカル REST API／ブラウザ連携が利用できる AB Download Manager
+- GoFile に接続できる通常のネットワーク環境
 
-## Install
+## インストール
 
-### 1. Install AB Download Manager
+### 1. AB Download Manager をインストールする
 
-Install and start AB Download Manager. This helper intentionally fixes the API target to:
+AB Download Manager をインストールして起動します。このヘルパーは API 接続先を意図的に次へ固定しています。
 
 ```text
 http://127.0.0.1:15151
 ```
 
-There is no option to point it at another machine.
+別の PC を接続先に指定するオプションはありません。
 
-### 2. Install Python dependencies
+### 2. Python の依存パッケージをインストールする
 
 Windows / Linux:
 
@@ -85,222 +85,222 @@ Windows / Linux:
 python -m pip install -r requirements.txt
 ```
 
-### 3. Start the localhost helper
+### 3. localhost ヘルパーを起動する
 
-#### Windows: recommended system-tray mode
+#### Windows: 推奨のシステムトレイモード
 
-Double-click:
+次をダブルクリックします。
 
 ```text
 start-tray.cmd
 ```
 
-This starts `tray.py` with `pythonw.exe`, so no terminal window remains open. The tray icon starts and monitors `app.py` in the background. Right-click the tray icon to use:
+`tray.py` が `pythonw.exe` で起動するため、ターミナルウィンドウは残りません。トレイアイコンがバックグラウンドで `app.py` を起動・監視します。トレイアイコンを右クリックすると、次の操作ができます。
 
-- **Helper: Running / Stopped** — current localhost-helper status
-- **Restart Helper** — restart the tray-owned Flask helper
-- **Open Folder** — open this project directory
-- **View Log** — open `helper.log`
-- **Start with Windows** — register/unregister the tray launcher for the current Windows user
-- **Exit** — stop the tray-owned helper and close the tray application
+- **Helper: Running / Stopped** — 現在の localhost ヘルパー状態
+- **Restart Helper** — トレイが管理している Flask ヘルパーを再起動
+- **Open Folder** — このプロジェクトのフォルダを開く
+- **View Log** — `helper.log` を開く
+- **Start with Windows** — 現在の Windows ユーザーについてトレイランチャーの自動起動を登録／解除
+- **Exit** — トレイ管理下のヘルパーを停止し、トレイアプリも終了
 
-For automatic startup, launch the tray once and turn on **Start with Windows**. This writes a per-user `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` entry pointing to `pythonw.exe tray.py`; administrator rights are not required.
+自動起動を有効にするには、一度トレイを起動して **Start with Windows** をオンにします。これにより、ユーザー単位の `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` に `pythonw.exe tray.py` を指すエントリが作成されます。管理者権限は不要です。
 
-If an old `python app.py` is already running manually, the tray shows **Running (external)** and will not kill it. Close the old terminal once; the tray detects the stopped helper and starts its own hidden copy automatically.
+古い `python app.py` が手動で起動済みの場合、トレイには **Running (external)** と表示され、そのプロセスを終了しません。古いターミナルを一度閉じると、トレイがヘルパー停止を検知し、自動的に自身の非表示プロセスを起動します。
 
-#### Manual / Linux mode
+#### 手動 / Linux モード
 
-You can still run the helper directly:
+ヘルパーを直接起動することもできます。
 
 ```bash
 python app.py
 ```
 
-It binds only to:
+バインド先は次だけです。
 
 ```text
 127.0.0.1:8765
 ```
 
-Optional health check:
+任意のヘルスチェック:
 
 ```text
 http://127.0.0.1:8765/health
 ```
 
-### 4. Install the Userscript
+### 4. Userscript をインストールする
 
-Install Violentmonkey, create a new script, and paste the complete contents of:
+Violentmonkey をインストールし、新しいスクリプトを作成して次のファイルの内容をすべて貼り付けます。
 
 ```text
 gofile-abdm.user.js
 ```
 
-The script only grants cross-origin Userscript access to `localhost` / `127.0.0.1`; it does not use `@connect *` and does not use `unsafeWindow`.
+このスクリプトがクロスオリジンで許可するのは `localhost` / `127.0.0.1` への Userscript アクセスだけです。`@connect *` や `unsafeWindow` は使用しません。
 
-### 5. Open GoFile normally
+### 5. 通常どおり GoFile を開く
 
-Open a shared URL such as:
+たとえば次のような共有 URL を開きます。
 
 ```text
 https://gofile.io/d/xxxxxxxx
 ```
 
-The Userscript adds a small ABDM toolbar to the GoFile page. It does not redirect you to a Flask page.
+Userscript が GoFile ページに小さな ABDM ツールバーを追加します。Flask ページへリダイレクトされることはありません。
 
-## Usage
+## 使い方
 
-1. Start ABDM.
-2. On Windows, keep the tray launcher running (recommended); otherwise run `python app.py`.
-3. Open the GoFile share URL normally.
-4. Wait for the toolbar to show the resolved file count.
-5. Check files or folders in the GoFile list.
-6. Use **Select All** / **Clear** as needed.
-7. Optionally open **⚙** and choose an ABDM download queue, Save folder, or preset.
-   - **Default (ABDM)** — omit `queueId` and let ABDM use its default behavior.
-   - Any named queue — send that queue's integer ID as `queueId`.
-8. Choose a send mode:
-   - **Send to ABDM** — preserve the GoFile folder hierarchy.
-   - **Send Flat** — ignore the GoFile folder hierarchy and place files directly in the selected Save folder (or ABDM default folder when Save folder is empty).
-9. The toolbar shows registration progress, for example `12 / 30`.
-10. If individual tasks fail, use **Retry Failed**. Retry keeps the send mode used by the failed batch.
+1. ABDM を起動します。
+2. Windows ではトレイランチャーを起動したままにするのがおすすめです。それ以外では `python app.py` を実行します。
+3. GoFile の共有 URL を通常どおり開きます。
+4. ツールバーに解決済みファイル数が表示されるまで待ちます。
+5. GoFile の一覧でファイルまたはフォルダにチェックを入れます。
+6. 必要に応じて **Select All** / **Clear** を使います。
+7. 必要なら **⚙** を開き、ABDM のダウンロードキュー、Save folder、またはプリセットを選択します。
+   - **Default (ABDM)** — `queueId` を省略し、ABDM のデフォルト動作に任せます。
+   - 任意の名前付きキュー — そのキューの整数 ID を `queueId` として送信します。
+8. 送信モードを選びます。
+   - **Send to ABDM** — GoFile のフォルダ階層を保持します。
+   - **Send Flat** — GoFile のフォルダ階層を無視し、選択した Save folder（空の場合は ABDM のデフォルトフォルダ）へ直接ファイルを配置します。
+9. ツールバーには、たとえば `12 / 30` のように登録進捗が表示されます。
+10. 個別タスクが失敗した場合は **Retry Failed** を使用します。再試行時も、失敗したバッチで使用した送信モードが維持されます。
 
-The displayed progress is **ABDM task-registration progress**, not actual download progress. Speed, ETA, pause/resume, cancel, and history remain ABDM's responsibility.
+表示される進捗は**ABDM へのタスク登録進捗**であり、実際のダウンロード進捗ではありません。速度、ETA、一時停止／再開、キャンセル、履歴は ABDM 側の機能です。
 
-## Windows tray and automatic startup
+## Windows トレイと自動起動
 
-The tray launcher is intentionally separate from `app.py`: `app.py` remains a small localhost-only Flask API, while `tray.py` only manages its process and Windows startup behavior. No Flask HTML UI is added.
+トレイランチャーは意図的に `app.py` から分離されています。`app.py` は localhost 専用の小さな Flask API のままで、`tray.py` はそのプロセス管理と Windows の自動起動のみを担当します。Flask の HTML UI は追加していません。
 
-### First-time setup
+### 初回セットアップ
 
-After updating the project, install the added tray dependencies once:
+プロジェクト更新後、追加されたトレイ用依存パッケージを一度インストールします。
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-Then double-click `start-tray.cmd`. A small blue download icon appears in the Windows notification area. If Windows hides it, open the `^` hidden-icons menu.
+その後 `start-tray.cmd` をダブルクリックします。Windows の通知領域に小さな青いダウンロードアイコンが表示されます。Windows によって隠されている場合は、`^` の隠しアイコンメニューを開いてください。
 
-Right-click the icon and enable **Start with Windows**. From the next login onward, the tray application and Flask helper start automatically without a terminal window.
+アイコンを右クリックし、**Start with Windows** を有効にします。次回ログイン以降は、ターミナルを表示せずにトレイアプリと Flask ヘルパーが自動起動します。
 
-### Logs
+### ログ
 
-Because the background helper has no terminal, Flask output is written to:
+バックグラウンドのヘルパーにはターミナルがないため、Flask の出力は次へ書き込まれます。
 
 ```text
 helper.log
 ```
 
-When it grows beyond roughly 2 MB, the previous log is rotated to `helper.log.1`. Request bodies, passwords, cookies, tokens, and temporary direct URLs are not intentionally logged by the helper.
+約 2 MB を超えると、以前のログは `helper.log.1` にローテーションされます。リクエスト本文、パスワード、Cookie、トークン、一時的な直接 URL をヘルパーが意図的にログへ記録することはありません。
 
-### Stopping automatic startup
+### 自動起動を停止する
 
-Right-click the tray icon and uncheck **Start with Windows**. This removes only this application's per-user Run entry. It does not uninstall Python, ABDM, or the Userscript.
+トレイアイコンを右クリックし、**Start with Windows** のチェックを外します。削除されるのは、このアプリケーションのユーザー単位 Run エントリだけです。Python、ABDM、Userscript はアンインストールされません。
 
-## File and folder selection
+## ファイル／フォルダの選択
 
-The Userscript resolves the current GoFile tree through the Python helper and then tries to attach checkboxes to the existing GoFile rows.
+Userscript は Python ヘルパーを通して現在の GoFile ツリーを解決し、既存の GoFile 行へチェックボックスを付けようとします。
 
-The DOM integration intentionally does not hard-code one fragile GoFile row class. It prefers known content identifiers (`data-content-id`, `data-id`, `data-item-id`, and `data-uuid`), then links, and finally a conservative filename match. The **Items** button is always available and opens a complete fallback tree selector, so selection does not depend on one specific GoFile row layout.
+DOM 統合では、壊れやすい単一の GoFile 行クラスを固定で使用しない設計にしています。既知のコンテンツ識別子（`data-content-id`、`data-id`、`data-item-id`、`data-uuid`）を優先し、その次にリンク、最後に保守的なファイル名一致を使用します。**Items** ボタンは常に利用でき、完全なフォールバック用ツリーセレクターを開けるため、選択機能は特定の GoFile 行レイアウトだけに依存しません。
 
-If the Helper cannot resolve immediately (for example while GoFile is temporarily returning HTTP 429), visible GoFile rows can still be selected provisionally from their content IDs. The selected IDs are matched to the resolved tree after a later successful **Load** or immediately before sending. Actual sending still requires a successful resolve because ABDM needs the resolved direct link and headers.
+Helper がすぐに解決できない場合（たとえば GoFile が一時的に HTTP 429 を返している場合）でも、表示中の GoFile 行は content ID を使って暫定的に選択できます。その後 **Load** が成功した時点、または送信直前に、選択済み ID を解決済みツリーと照合します。実際の送信には、ABDM 用の直接リンクとヘッダーが必要なため、最終的には resolve の成功が必要です。
 
-Selecting a folder selects all descendant files recursively. Folder selection counts and total size are computed from the helper-resolved tree.
+フォルダを選択すると、その配下にあるすべてのファイルが再帰的に選択されます。フォルダの選択件数と合計サイズは、ヘルパーが解決したツリーから計算されます。
 
-### Preserve structure vs flat download
+### 階層保持とフラットダウンロード
 
-The toolbar has two ABDM send actions:
+ツールバーには 2 種類の ABDM 送信操作があります。
 
-- **Send to ABDM** preserves each file's GoFile-relative folder path.
-- **Send Flat** discards the GoFile-relative folder path. This is useful when you select one file inside a deeply nested GoFile folder and want only that file in your destination, without creating the GoFile folders.
+- **Send to ABDM** は各ファイルの GoFile 上の相対フォルダパスを保持します。
+- **Send Flat** は GoFile 上の相対フォルダパスを破棄します。深い階層内の 1 ファイルだけを選び、GoFile のフォルダを作らずに保存先へ直接置きたい場合に便利です。
 
-Example with Save folder `D:/Downloads` and GoFile path `Anime/Subs/Episode01.ass`:
+Save folder が `D:/Downloads`、GoFile 上のパスが `Anime/Subs/Episode01.ass` の場合:
 
 ```text
 Send to ABDM -> D:/Downloads/Anime/Subs/Episode01.ass
 Send Flat    -> D:/Downloads/Episode01.ass
 ```
 
-Flat mode also works for multiple selected files. If different source folders contain files with the same filename, ABDM's own duplicate-name behavior applies.
+Flat モードは複数ファイルでも利用できます。異なる元フォルダに同名ファイルがある場合は、ABDM 自身の重複ファイル名処理が適用されます。
 
-## SPA navigation
+## SPA ナビゲーション
 
-The script handles:
+スクリプトは次を処理します。
 
 - `history.pushState`
 - `history.replaceState`
 - `popstate`
-- replacement of the file-manager DOM
+- ファイルマネージャー DOM の置き換え
 
-A debounced observer is attached to the file-manager/main area instead of running a high-frequency page-wide polling loop. Toolbar and checkbox insertion are idempotent to avoid duplicates.
+ページ全体を高頻度でポーリングするのではなく、デバウンスされた observer をファイルマネージャー／main 領域へ付けています。ツールバーとチェックボックスの挿入は、重複しないよう冪等に実装されています。
 
-## Save folder and presets
+## 保存先フォルダとプリセット
 
-The settings popup stores only browser-side UI preferences with GM storage:
+設定ポップアップが GM ストレージへ保存するのは、ブラウザ側の UI 設定だけです。
 
-- selected ABDM queue ID
-- last save folder
-- save-folder presets
+- 選択中の ABDM キュー ID
+- 最後に使用した Save folder
+- Save folder プリセット
 
-Presets can be added, edited, deleted, and selected.
+プリセットは追加、編集、削除、選択できます。
 
-### ABDM queue selection
+### ABDM キューの選択
 
-Open **⚙ → Download queue** to select the queue used for new tasks. The list is refreshed from ABDM each time Settings opens using:
+**⚙ → Download queue** を開き、新しいタスクで使用するキューを選択します。Settings を開くたびに、次の API を使って ABDM から一覧を更新します。
 
 ```text
 GET http://127.0.0.1:15151/queues
 ```
 
-- **Default (ABDM)**: the helper omits the optional `queueId` field.
-- **Named queue**: the helper sends that queue's integer ID as `queueId` in every `/start-headless-download` request.
-- **Retry Failed** keeps the same queue that was used for the original failed batch, just like it keeps Flat vs hierarchy-preserving mode.
+- **Default (ABDM)**: ヘルパーは任意フィールド `queueId` を省略します。
+- **Named queue**: ヘルパーは `/start-headless-download` の各リクエストで、そのキューの整数 ID を `queueId` として送信します。
+- **Retry Failed** は Flat／階層保持モードと同様に、元の失敗バッチで使用していたキューを維持します。
 
-If a previously saved queue no longer exists, Settings shows it as unavailable so you can select another queue or return to Default.
+以前保存したキューが存在しなくなっている場合、Settings では利用不可として表示されるため、別のキューを選ぶか Default に戻せます。
 
-Passwords are **never persisted**.
+パスワードは**永続保存されません**。
 
-### ABDM default save folder
+### ABDM のデフォルト保存先
 
-If Save folder is empty, the helper omits ABDM's optional `folder` field so ABDM uses its configured default behavior.
+Save folder が空の場合、ヘルパーは ABDM の任意フィールド `folder` を省略し、ABDM の設定済みデフォルト動作に任せます。
 
-Important limitation: the current official ABDM REST specification does not document an operation meaning “ABDM default directory + this relative subfolder”. Therefore, when Save folder is blank, **Send Flat** cleanly uses ABDM's default directory, while hierarchy-preserving behavior cannot reliably append a relative subfolder to that unknown default. To guarantee preservation of the GoFile folder hierarchy, set an explicit root such as:
+重要な制限: 現在の ABDM 公式 REST 仕様には「ABDM のデフォルトディレクトリ + この相対サブフォルダ」という意味の操作が文書化されていません。そのため Save folder が空の場合、**Send Flat** は問題なく ABDM のデフォルトディレクトリを使用できますが、階層保持モードでは未知のデフォルトディレクトリへ相対サブフォルダを確実に追加できません。GoFile のフォルダ階層を確実に保持したい場合は、次のように明示的なルートを指定してください。
 
 ```text
 D:/Downloads
 ```
 
-Then a GoFile path such as:
+GoFile 上のパスが次の場合:
 
 ```text
 Anime/Subs/Episode01.ass
 ```
 
-is registered with an ABDM folder similar to:
+ABDM には次のようなフォルダが登録されます。
 
 ```text
 D:/Downloads/Anime/Subs
 ```
 
-## Password-protected content
+## パスワード保護コンテンツ
 
-If GoFile reports that the content requires a password, the Userscript opens a password popup. The password is sent only to the localhost helper for that resolve request and is kept only in page memory for the current session.
+GoFile がパスワード必須コンテンツだと返した場合、Userscript がパスワード入力ポップアップを開きます。パスワードはその resolve リクエストのためだけに localhost ヘルパーへ送られ、現在のセッション中だけページメモリに保持されます。
 
-The helper sends the SHA-256 password value to GoFile's content API, matching the behavior used by the current GoFile tooling.
+ヘルパーは現在の GoFile ツールと同じ動作になるよう、SHA-256 化したパスワード値を GoFile の content API へ送信します。
 
-## Guest access and Website Token
+## ゲストアクセスと Website Token
 
-No Premium/account token input is implemented.
+Premium／アカウントトークンの入力機能は実装していません。
 
-The helper creates a GoFile guest account and derives `X-Website-Token` dynamically from:
+ヘルパーは GoFile のゲストアカウントを作成し、次の式から `X-Website-Token` を動的に生成します。
 
 ```text
 sha256(User-Agent :: language :: guest-account-token :: 4-hour-window :: salt)
 ```
 
-The token itself is therefore not a copied static Website Token.
+したがって、このトークンはコピーされた固定 Website Token ではありません。
 
-GoFile can rotate the salt embedded in its website JavaScript. This project ships the value current in the reviewed `gofile-dl` implementation on 2026-09-05. If GoFile later rejects it, set the current salt before starting the helper:
+GoFile は Web サイトの JavaScript に埋め込まれた salt を変更する可能性があります。このプロジェクトには、2026-09-05 に確認した `gofile-dl` 実装で当時使用されていた値を同梱しています。将来 GoFile がその値を拒否するようになった場合は、ヘルパー起動前に現在の salt を設定してください。
 
 Windows PowerShell:
 
@@ -315,119 +315,119 @@ Linux/macOS shell:
 GOFILE_WT_SALT="current-value" python app.py
 ```
 
-You can also override `GOFILE_USER_AGENT` and `GOFILE_LANGUAGE` if GoFile changes what it validates. These values must match the values hashed into the Website Token.
+GoFile 側の検証対象が変わった場合は、`GOFILE_USER_AGENT` と `GOFILE_LANGUAGE` も上書きできます。これらの値は Website Token のハッシュに使用する値と一致している必要があります。
 
-## ABDM connection status
+## ABDM の接続状態
 
-The helper checks ABDM using the documented:
+ヘルパーは文書化済みの次の API を使って ABDM を確認します。
 
 ```text
 GET http://127.0.0.1:15151/queues
 ```
 
-The Userscript checks connection status:
+Userscript が接続状態を確認するタイミングは次のとおりです。
 
-- once on initial load
-- when Settings opens
-- immediately before sending
+- 初回読み込み時に 1 回
+- Settings を開いたとき
+- 送信直前
 
-It does not continuously poll ABDM.
+ABDM を継続的にポーリングすることはありません。
 
-## GoFile request / rate-limit behavior
+## GoFile リクエスト／レート制限時の動作
 
-The Helper deliberately minimizes repeated GoFile API traffic:
+Helper は、GoFile API への繰り返しアクセスを意図的に最小化しています。
 
-- one guest GoFile session/token is reused while the Helper process is running;
-- successful resolves are cached for 20 minutes by content ID and a SHA-256 password digest;
-- a repeated resolve of the same content within that window is served from local memory;
-- recursive resolves are serialized so two resolves do not run against GoFile at the same time;
-- recursive content requests are paced at 0.75 seconds by default to avoid request bursts;
-- HTTP/API rate-limit responses stop the resolve immediately and are not retried.
+- Helper プロセスが動作している間は、1 つの GoFile ゲストセッション／トークンを再利用します。
+- 成功した resolve は、content ID と SHA-256 パスワードダイジェストをキーとして 20 分間キャッシュします。
+- 同一コンテンツをその時間内に再度 resolve した場合は、ローカルメモリから返します。
+- 再帰 resolve は直列化され、2 つの resolve が同時に GoFile へ走らないようにします。
+- 再帰的な content リクエストは、バーストを避けるためデフォルトで 0.75 秒間隔にします。
+- HTTP/API のレート制限レスポンスを受けた場合、その resolve を即座に停止し、再試行しません。
 
-Restarting the Helper clears these in-memory caches and creates a new guest session on the next resolve. The pacing interval can be overridden with `GOFILE_REQUEST_INTERVAL` (seconds); setting it to `0` disables pacing.
+Helper を再起動すると、これらのメモリ内キャッシュは消去され、次回 resolve 時に新しいゲストセッションが作成されます。待機間隔は `GOFILE_REQUEST_INTERVAL`（秒）で上書きできます。`0` にすると待機を無効化します。
 
-## Security
+## セキュリティ
 
-The helper intentionally applies the following restrictions:
+ヘルパーには意図的に次の制限を設けています。
 
-- Flask binds to `127.0.0.1` only.
-- ABDM is fixed to `127.0.0.1:15151`.
-- The helper accepts only a validated GoFile `/d/<content-id>` URL or content ID.
-- There is no generic URL-fetch endpoint, preventing the helper from becoming an SSRF proxy.
-- API requests require the custom `X-GoFile-ABDM: 1` marker and JSON for POST requests; no permissive CORS headers are added.
-- GoFile-derived filenames/folder segments are sanitized before they are appended to a user-specified root.
-- `../`, `..\\`, slashes, backslashes, NUL/control characters, Windows drive injection, trailing dots/spaces, and reserved Windows names are neutralized in GoFile-derived path segments.
-- The user-selected save root itself is not rewritten beyond normalizing path separators for the ABDM API.
-- Guest tokens, Website Tokens, cookies, passwords, Authorization headers, and temporary direct URLs are not intentionally logged.
-- One task failure does not stop the remaining tasks.
-- Resolved direct URLs/headers are stored only in an in-memory helper cache (20-minute TTL); the Userscript receives opaque file keys rather than direct URLs/cookies.
+- Flask は `127.0.0.1` のみにバインドします。
+- ABDM の接続先は `127.0.0.1:15151` に固定します。
+- ヘルパーが受け付けるのは、検証済みの GoFile `/d/<content-id>` URL または content ID だけです。
+- 汎用 URL 取得エンドポイントは用意せず、ヘルパーが SSRF プロキシにならないようにしています。
+- API リクエストには独自の `X-GoFile-ABDM: 1` マーカーが必要で、POST リクエストには JSON を要求します。寛容な CORS ヘッダーは追加しません。
+- GoFile 由来のファイル名／フォルダセグメントは、ユーザー指定ルートへ追加する前にサニタイズします。
+- GoFile 由来のパスセグメントでは、`../`、`..\\`、スラッシュ、バックスラッシュ、NUL／制御文字、Windows ドライブ注入、末尾のドット／スペース、Windows の予約名を無害化します。
+- ユーザーが選択した保存先ルート自体は、ABDM API 向けのパス区切り正規化を除き、書き換えません。
+- ゲストトークン、Website Token、Cookie、パスワード、Authorization ヘッダー、一時的な直接 URL は意図的にログへ記録しません。
+- 1 タスクが失敗しても、残りのタスク処理は継続します。
+- 解決済みの直接 URL／ヘッダーは、Helper のメモリ内キャッシュ（TTL 20 分）だけに保存します。Userscript には直接 URL／Cookie ではなく、不透明な file key を返します。
 
-Because localhost HTTP services can be targeted by browser pages, keep the helper bound to loopback and do not add CORS or LAN binding.
+localhost の HTTP サービスはブラウザ上のページから狙われる可能性があるため、ヘルパーは loopback にバインドしたまま使用し、CORS や LAN バインドを追加しないでください。
 
-## Features intentionally not implemented
+## 意図的に実装していない機能
 
-- Premium / Account Token input
-- URL history / favorites
-- search / extension filters / sorting / previews
-- direct browser download
+- Premium / Account Token 入力
+- URL 履歴 / お気に入り
+- 検索 / 拡張子フィルター / 並べ替え / プレビュー
+- ブラウザからの直接ダウンロード
 - Aria2 / IDM / JDownloader
-- Python file downloader or Flask streaming
-- transfer speed / ETA
-- pause / resume / cancel
-- download history database
-- dashboard
+- Python ファイルダウンローダー / Flask ストリーミング
+- 転送速度 / ETA
+- 一時停止 / 再開 / キャンセル
+- ダウンロード履歴データベース
+- ダッシュボード
 - React / Vue
 - Docker
 - CLI
 - database / Celery / Redis
 
-## Tests
+## テスト
 
-Run the local tests:
+ローカルテストを実行するには:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Static syntax checks used during development:
+開発時に使用した静的構文チェック:
 
 ```bash
 python -m py_compile app.py gofile.py abdm.py
 node --check gofile-abdm.user.js
 ```
 
-The unit tests use mocks and do not contact GoFile or ABDM.
+ユニットテストは mock を使用し、GoFile や ABDM へ実際の通信は行いません。
 
-## Troubleshooting
+## トラブルシューティング
 
 ### Python Helper Offline
 
-Make sure:
+次がまだ実行中であることを確認してください。
 
 ```bash
 python app.py
 ```
 
-is still running and the Userscript has permission to access `127.0.0.1`.
+また、Userscript に `127.0.0.1` へのアクセス権限があることを確認します。
 
 ### ABDM Offline
 
-Start AB Download Manager and confirm its local REST/browser integration is enabled on port `15151`.
+AB Download Manager を起動し、ローカル REST／ブラウザ連携がポート `15151` で有効になっていることを確認してください。
 
 ### `website_token_rejected`
 
-GoFile likely changed the Website Token salt or browser-validation inputs. Update `GOFILE_WT_SALT` first. Do not replace the implementation with an old static `config.js` Website Token.
+GoFile が Website Token の salt またはブラウザ検証用入力値を変更した可能性があります。まず `GOFILE_WT_SALT` を更新してください。実装を古い固定 `config.js` Website Token へ置き換えないでください。
 
-### Rate limit
+### レート制限
 
-The helper does **not** retry GoFile rate-limit responses. Recursive content requests are spaced by 0.75 seconds by default, and a 429/API rate-limit response stops the current recursive resolve immediately. Wait before trying again; repeated identical resolves within the 20-minute cache window are served from local memory without another GoFile API request.
+ヘルパーは GoFile のレート制限レスポンスを**再試行しません**。再帰的な content リクエストはデフォルトで 0.75 秒間隔になっており、429／API レート制限レスポンスを受けると現在の再帰 resolve を即座に停止します。時間を置いてから再試行してください。同一内容の resolve は 20 分のキャッシュ有効期間内であれば、GoFile API へ再アクセスせずローカルメモリから返されます。
 
-### Some checkboxes do not appear
+### 一部のチェックボックスが表示されない
 
-GoFile's frontend DOM may have changed. Use the **Items** fallback selector. The helper-side resolve/send logic is independent of GoFile row classes.
+GoFile のフロントエンド DOM が変更された可能性があります。**Items** のフォールバックセレクターを使用してください。ヘルパー側の resolve／send ロジックは GoFile の行クラスに依存していません。
 
-## License
+## ライセンス
 
-This project is provided under the MIT License. See `LICENSE`.
+このプロジェクトは MIT License のもとで提供されます。`LICENSE` を参照してください。
 
-The implementation is original and uses the three upstream projects as behavioral/API references rather than copying their code. See `LICENSES/optional-license-notices.txt` for reference-project notices.
+実装はオリジナルであり、上記 3 つの upstream プロジェクトはコードをコピーするのではなく、挙動／API の参考資料として使用しています。参照プロジェクトに関する通知は `LICENSES/optional-license-notices.txt` を参照してください。
