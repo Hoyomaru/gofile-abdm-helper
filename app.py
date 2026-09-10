@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import threading
 import time
@@ -13,6 +14,8 @@ from flask import Flask, jsonify, request
 from abdm import ABDMClient, ABDMError
 from gofile import (
     ContentNotFound,
+    ContentAccessDenied,
+    CONTENT_ID_RE,
     GoFileClient,
     GoFileError,
     InvalidContent,
@@ -30,6 +33,8 @@ API_MARKER_HEADER = "X-GoFile-ABDM"
 API_MARKER_VALUE = "1"
 CACHE_TTL_SECONDS = 20 * 60
 MAX_SEND_ITEMS = 1000
+MAX_PASSWORD_HASHES = 1000
+PASSWORD_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -78,11 +83,25 @@ def _cache_get(resolve_id: str) -> Optional[ResolveResult]:
         return entry.result if entry else None
 
 
-def _source_cache_key(content_id: str, password: Optional[str]) -> tuple[str, str]:
-    # Keep plaintext passwords out of cache keys and memory structures. The
-    # digest only distinguishes different password-protected views of a content.
-    password_digest = hashlib.sha256(password.encode("utf-8")).hexdigest() if password else ""
-    return content_id, password_digest
+def _password_digest(password: Optional[str]) -> Optional[str]:
+    if password is None or password == "":
+        return None
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def _source_cache_key(
+    content_id: str,
+    password: Optional[str] = None,
+    password_hashes: Optional[Dict[str, str]] = None,
+) -> tuple[str, str]:
+    """Return a cache key derived from all normalized credentials, never plaintext."""
+    credentials = {key: value.lower() for key, value in (password_hashes or {}).items()}
+    if content_id not in credentials:
+        digest = _password_digest(password)
+        if digest:
+            credentials[content_id] = digest
+    canonical = "\n".join(f"{key}\0{credentials[key]}" for key in sorted(credentials))
+    return content_id, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _source_cache_get(key: tuple[str, str]) -> Optional[ResolveResult]:
@@ -116,8 +135,37 @@ def _resolve_payload(result: ResolveResult, resolve_id: str, *, cached: bool):
     )
 
 
-def _api_error(message: str, code: str, status: int):
-    return jsonify({"ok": False, "error": {"code": code, "message": message}}), status
+def _api_error(message: str, code: str, status: int, **details):
+    error = {"code": code, "message": message}
+    for key in ("content_id", "folder_name", "relative_path"):
+        value = details.get(key)
+        if value is not None:
+            error[key] = value
+    return jsonify({"ok": False, "error": error}), status
+
+
+def _normalize_password_hashes(value) -> Dict[str, str]:
+    if not isinstance(value, dict) or len(value) > MAX_PASSWORD_HASHES:
+        raise ValueError("password_hashes must be an object with at most 1000 entries.")
+    normalized: Dict[str, str] = {}
+    for content_id, digest in value.items():
+        if not isinstance(content_id, str) or not CONTENT_ID_RE.fullmatch(content_id):
+            raise ValueError("password_hashes contains an invalid content ID.")
+        if not isinstance(digest, str) or not PASSWORD_HASH_RE.fullmatch(digest):
+            raise ValueError("password_hashes contains an invalid SHA-256 digest.")
+        normalized[content_id] = digest.lower()
+    return normalized
+
+
+def _challenge_error(exc: GoFileError, status: int):
+    return _api_error(
+        str(exc),
+        exc.code,
+        status,
+        content_id=getattr(exc, "content_id", None),
+        folder_name=getattr(exc, "folder_name", None),
+        relative_path=getattr(exc, "relative_path", None),
+    )
 
 
 @app.before_request
@@ -154,16 +202,31 @@ def abdm_queues():
 
 @app.post("/api/gofile/resolve")
 def gofile_resolve():
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return _api_error("JSON object required.", "invalid_body", 400)
     source = body.get("url") or body.get("content_id")
     password = body.get("password")
     if password is not None and not isinstance(password, str):
         return _api_error("Password must be a string.", "invalid_password", 400)
+    try:
+        password_hashes = (
+            {}
+            if "password_hashes" not in body
+            else _normalize_password_hashes(body["password_hashes"])
+        )
+    except ValueError as exc:
+        return _api_error(str(exc), "invalid_password_hashes", 400)
 
     try:
         content_id = parse_content_id(source)
-        effective_password = password or None
-        source_key = _source_cache_key(content_id, effective_password)
+        effective_password = password if password != "" else None
+        credentials = dict(password_hashes)
+        if content_id not in credentials:
+            digest = _password_digest(effective_password)
+            if digest:
+                credentials[content_id] = digest
+        source_key = _source_cache_key(content_id, password_hashes=credentials)
 
         result = _source_cache_get(source_key)
         cached = result is not None
@@ -175,7 +238,7 @@ def gofile_resolve():
                 result = _source_cache_get(source_key)
                 cached = result is not None
                 if result is None:
-                    result = _gofile_client.resolve(content_id, password=effective_password)
+                    result = _gofile_client.resolve(content_id, password_hashes=credentials)
                     _source_cache_put(source_key, result)
 
         resolve_id = _cache_put(result)
@@ -183,9 +246,11 @@ def gofile_resolve():
     except InvalidContent as exc:
         return _api_error(str(exc), exc.code, 400)
     except PasswordRequired as exc:
-        return _api_error(str(exc), exc.code, 401)
+        return _challenge_error(exc, 401)
     except WrongPassword as exc:
-        return _api_error(str(exc), exc.code, 401)
+        return _challenge_error(exc, 401)
+    except ContentAccessDenied as exc:
+        return _challenge_error(exc, 403)
     except ContentNotFound as exc:
         return _api_error(str(exc), exc.code, 404)
     except RateLimited as exc:

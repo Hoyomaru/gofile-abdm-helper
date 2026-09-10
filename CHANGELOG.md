@@ -2,6 +2,19 @@
 
 このプロジェクトの主な変更点をこのファイルに記録します。
 
+## [Unreleased]
+
+### Added
+
+- Resolve password-protected folder trees with per-folder SHA-256 digests, inherited parent credentials, challenge paths, and same-root retries.
+- Validate the `password_hashes` helper input, separate resolved-content caches by the complete credential map, and reject HTTP 200 access-denied envelopes instead of returning empty success trees.
+- Add Userscript resolve-generation guards, one-operation retry state, one-time GoFile `sessionStorage` assistance, and cancellation-safe password prompts for Cancel, background, Escape, replacement, and SPA navigation.
+- Add Python and Node regression tests for access envelopes, credential inheritance, cache separation, stale responses, storage assistance, and modal Promise completion.
+
+### Notes
+
+- This feature is not a release; `VERSION` and the Userscript `@version` remain `1.0.3` until the project's release procedure is explicitly run.
+
 ## [1.0.3] - 2026-09-08
 
 レビューで確認された回帰問題の修正。

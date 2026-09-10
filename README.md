@@ -53,7 +53,8 @@ project/
 ├── LICENSES/
 │   └── optional-license-notices.txt
 └── tests/
-    └── test_core.py
+    ├── test_core.py
+    └── test_userscript.cjs
 ```
 
 `templates/` や `static/` ディレクトリは使用しません。
@@ -286,7 +287,11 @@ D:/Downloads/Anime/Subs
 
 GoFile がパスワード必須コンテンツだと返した場合、Userscript がパスワード入力ポップアップを開きます。パスワードはその resolve リクエストのためだけに localhost ヘルパーへ送られ、現在のセッション中だけページメモリに保持されます。
 
-ヘルパーは現在の GoFile ツールと同じ動作になるよう、SHA-256 化したパスワード値を GoFile の content API へ送信します。
+ポップアップには GoFile が返した対象フォルダの path を表示します。パスワードはページ内で SHA-256 化され、Helper には要求した GoFile content ID をキーとする `password_hashes` map が渡されます。旧クライアント向けに Helper の `password` フィールドも受け付けますが、64 桁の hex に見える場合も平文として扱います。
+
+ルートと子フォルダでは異なるパスワードを指定できます。入力間違いの後は、そのフォルダの digest だけを更新し、同じルート URL から再 resolve します。ポップアップは **Cancel**、背景クリック、**Escape** でキャンセルでき、選択を保持したまま ABDM へは送信しません。空入力は拒否しますが、空でないパスワードの前後空白は保持します。
+
+GoFile ページで解除済みの場合、Userscript は対象 ID の `sessionStorage` キー `password|<content-id>` を一度だけ候補として参照することがあります。これは補助経路に限られ、利用不可・不正・拒否された値は手入力へ戻ります。全 storage の走査や password／digest の Userscript 自身による永続化は行いません。手入力はページメモリだけに保持します。
 
 ## ゲストアクセスと Website Token
 
@@ -338,13 +343,13 @@ ABDM を継続的にポーリングすることはありません。
 Helper は、GoFile API への繰り返しアクセスを意図的に最小化しています。
 
 - Helper プロセスが動作している間は、1 つの GoFile ゲストセッション／トークンを再利用します。
-- 成功した resolve は、content ID と SHA-256 パスワードダイジェストをキーとして 20 分間キャッシュします。
+- 成功した resolve は、ルート content ID と正規化済み ID-to-SHA-256-digest map をキーとして 20 分間キャッシュします。
 - 同一コンテンツをその時間内に再度 resolve した場合は、ローカルメモリから返します。
 - 再帰 resolve は直列化され、2 つの resolve が同時に GoFile へ走らないようにします。
 - 再帰的な content リクエストは、バーストを避けるためデフォルトで 0.75 秒間隔にします。
 - HTTP/API のレート制限レスポンスを受けた場合、その resolve を即座に停止し、再試行しません。
 
-Helper を再起動すると、これらのメモリ内キャッシュは消去され、次回 resolve 時に新しいゲストセッションが作成されます。待機間隔は `GOFILE_REQUEST_INTERVAL`（秒）で上書きできます。`0` にすると待機を無効化します。
+Helper を再起動すると、これらのメモリ内キャッシュ（古い空フォルダ成功結果を含む）は消去され、次回 resolve 時に新しいゲストセッションが作成されます。Helper 更新後は、以前に確認したパスワード保護 share を再試行する前に再起動してください。待機間隔は `GOFILE_REQUEST_INTERVAL`（秒）で上書きできます。`0` にすると待機を無効化します。
 
 ## セキュリティ
 

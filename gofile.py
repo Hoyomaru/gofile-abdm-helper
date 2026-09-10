@@ -38,6 +38,19 @@ CONTENT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{5,127}$")
 class GoFileError(RuntimeError):
     code = "gofile_error"
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        content_id: Optional[str] = None,
+        folder_name: Optional[str] = None,
+        relative_path: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.content_id = content_id
+        self.folder_name = folder_name
+        self.relative_path = relative_path
+
 
 class InvalidContent(GoFileError):
     code = "invalid_content"
@@ -49,6 +62,10 @@ class PasswordRequired(GoFileError):
 
 class WrongPassword(GoFileError):
     code = "wrong_password"
+
+
+class ContentAccessDenied(GoFileError):
+    code = "content_access_denied"
 
 
 class RateLimited(GoFileError):
@@ -236,7 +253,7 @@ class GoFileClient:
 
     @staticmethod
     def _password_hash(password: Optional[str]) -> Optional[str]:
-        if not password:
+        if password is None or password == "":
             return None
         return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -245,6 +262,7 @@ class GoFileClient:
         content_id: str,
         *,
         password: Optional[str],
+        password_hash: Optional[str] = None,
         page: int,
         window_offset: int,
     ) -> Dict[str, Any]:
@@ -255,9 +273,11 @@ class GoFileClient:
             "sortField": "createTime",
             "sortDirection": -1,
         }
-        password_hash = self._password_hash(password)
-        if password_hash:
-            params["password"] = password_hash
+        effective_password_hash = password_hash
+        if effective_password_hash is None:
+            effective_password_hash = self._password_hash(password)
+        if effective_password_hash:
+            params["password"] = effective_password_hash
 
         self._pace_content_request()
         response = self.session.get(
@@ -276,17 +296,55 @@ class GoFileClient:
             payload = response.json()
         except ValueError as exc:
             raise GoFileError(f"GoFile returned HTTP {response.status_code} with a non-JSON response.") from exc
+        if not isinstance(payload, dict):
+            raise GoFileError("GoFile returned an unexpected content payload.")
 
         status = str(payload.get("status") or "")
         status_lower = status.lower()
         if status == "ok":
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                raise GoFileError("GoFile returned an unexpected content payload.")
+            if data.get("canAccess") is False:
+                folder_name = data.get("name")
+                folder_name = str(folder_name) if folder_name else None
+                if data.get("password") is True:
+                    error_type = WrongPassword if data.get("passwordStatus") == "passwordWrong" else PasswordRequired
+                    raise error_type(
+                        "The GoFile password was rejected."
+                        if error_type is WrongPassword
+                        else "This GoFile content requires a password.",
+                        content_id=content_id,
+                        folder_name=folder_name,
+                    )
+                raise ContentAccessDenied(
+                    "GoFile content access was denied.",
+                    content_id=content_id,
+                    folder_name=folder_name,
+                )
             return payload
         if "ratelimit" in status_lower or "rate_limit" in status_lower:
             raise RateLimited("GoFile rate limit reached.")
+        if "passwordwrong" in status_lower or "wrongpassword" in status_lower:
+            raise WrongPassword(
+                "The GoFile password was rejected.",
+                content_id=content_id,
+            )
+        if "passwordrequired" in status_lower or "requiredpassword" in status_lower:
+            raise PasswordRequired(
+                "This GoFile content requires a password.",
+                content_id=content_id,
+            )
         if "password" in status_lower:
-            if password:
-                raise WrongPassword("The GoFile password was rejected.")
-            raise PasswordRequired("This GoFile content requires a password.")
+            if password is not None or password_hash is not None:
+                raise WrongPassword(
+                    "The GoFile password was rejected.",
+                    content_id=content_id,
+                )
+            raise PasswordRequired(
+                "This GoFile content requires a password.",
+                content_id=content_id,
+            )
         if status in {"error-notFound", "error-notfound"} or "notfound" in status_lower:
             raise ContentNotFound("GoFile content was not found.")
         if status == "error-notPremium":
@@ -296,7 +354,13 @@ class GoFileClient:
             )
         raise GoFileError(f"GoFile API error: {_safe_error_status(status)}")
 
-    def fetch_folder(self, content_id: str, password: Optional[str] = None) -> Dict[str, Any]:
+    def fetch_folder(
+        self,
+        content_id: str,
+        password: Optional[str] = None,
+        *,
+        password_hash: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Fetch one folder with pagination; never retry a GoFile rate limit."""
         content_id = parse_content_id(content_id)
         merged: Optional[Dict[str, Any]] = None
@@ -309,12 +373,14 @@ class GoFileClient:
             for attempt in range(4):
                 window_offset = window_offsets[min(attempt, len(window_offsets) - 1)]
                 try:
-                    payload = self._request_folder_page(
-                        content_id,
-                        password=password,
-                        page=page,
-                        window_offset=window_offset,
-                    )
+                    request_kwargs = {
+                        "password": password,
+                        "page": page,
+                        "window_offset": window_offset,
+                    }
+                    if password_hash is not None:
+                        request_kwargs["password_hash"] = password_hash
+                    payload = self._request_folder_page(content_id, **request_kwargs)
                     break
                 except RateLimited:
                     # Stop the entire recursive resolve on the first 429/rate-limit
@@ -365,20 +431,61 @@ class GoFileClient:
         raw = f"{content_id}\0{relative_path}".encode("utf-8", errors="replace")
         return hashlib.sha256(raw).hexdigest()[:24]
 
-    def resolve(self, value: str, password: Optional[str] = None) -> ResolveResult:
+    def resolve(
+        self,
+        value: str,
+        password: Optional[str] = None,
+        *,
+        password_hashes: Optional[Dict[str, str]] = None,
+    ) -> ResolveResult:
         content_id = parse_content_id(value)
         self._guest_token()
         files: Dict[str, ResolvedFile] = {}
         visited: set[str] = set()
         download_page = f"{SITE_ORIGIN}/d/{content_id}"
+        credentials = dict(password_hashes or {})
+        if content_id not in credentials:
+            root_password_hash = self._password_hash(password)
+            if root_password_hash:
+                credentials[content_id] = root_password_hash
 
-        def walk(folder_id: str, parent_rel: str, is_root: bool = False) -> ResolvedNode:
+        def walk(
+            folder_id: str,
+            parent_rel: str,
+            is_root: bool = False,
+            parent_password_hash: Optional[str] = None,
+            known_name: Optional[str] = None,
+        ) -> ResolvedNode:
             if folder_id in visited:
                 raise GoFileError("Recursive folder loop detected in GoFile content.")
             visited.add(folder_id)
+            folder_password_hash = credentials.get(folder_id) or parent_password_hash
+            expected_name = str(known_name or folder_id)
+            expected_rel = expected_name if is_root else f"{parent_rel}/{expected_name}" if parent_rel else expected_name
             try:
-                data = self.fetch_folder(folder_id, password=password)
-                folder_name = str(data.get("name") or folder_id)
+                if folder_password_hash is None:
+                    # Keep the old call shape available for integrations that
+                    # replace fetch_folder with a two-argument test/client shim.
+                    data = self.fetch_folder(folder_id, password=None)
+                else:
+                    data = self.fetch_folder(folder_id, password_hash=folder_password_hash)
+            except (PasswordRequired, WrongPassword, ContentAccessDenied) as exc:
+                if exc.content_id is None:
+                    exc.content_id = folder_id
+                if known_name is not None:
+                    # The parent listing is the stable display context for a
+                    # child challenge, including duplicate child names.
+                    exc.folder_name = expected_name
+                if exc.relative_path is None:
+                    display_name = exc.folder_name or expected_name
+                    exc.relative_path = display_name if is_root else f"{parent_rel}/{display_name}" if parent_rel else display_name
+                visited.discard(folder_id)
+                raise
+            except Exception:
+                visited.discard(folder_id)
+                raise
+            try:
+                folder_name = str(data.get("name") or known_name or folder_id)
                 folder_rel = folder_name if is_root else f"{parent_rel}/{folder_name}" if parent_rel else folder_name
                 folder_key = self._node_key(folder_id, folder_rel)
                 node = ResolvedNode(
@@ -406,7 +513,7 @@ class GoFileClient:
                         continue
 
                     if child_type == "folder":
-                        child_node = walk(child_id, folder_rel, False)
+                        child_node = walk(child_id, folder_rel, False, folder_password_hash, child_name)
                         node.children.append(child_node)
                         node.file_keys.extend(child_node.file_keys)
                         continue

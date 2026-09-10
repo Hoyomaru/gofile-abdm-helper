@@ -41,7 +41,10 @@
     failedFileKeys: [],
     lastSendPreserveStructure: true,
     lastSendQueueId: null,
-    password: null,
+    passwordHashes: new Map(),
+    resolveGeneration: 0,
+    activeResolve: null,
+    cancelPasswordPrompt: null,
     resolving: false,
     sending: false,
     connected: false,
@@ -85,6 +88,9 @@
           const error = new Error(payload?.error?.message || `Helper returned HTTP ${response.status}`);
           error.code = payload?.error?.code || 'http_error';
           error.status = response.status;
+          error.contentId = payload?.error?.content_id;
+          error.folderName = payload?.error?.folder_name;
+          error.relativePath = payload?.error?.relative_path;
           reject(error);
         },
         onerror: () => reject(Object.assign(new Error('Python Helper is offline.'), { code: 'helper_offline' })),
@@ -232,9 +238,14 @@
     document.getElementById('gab-send').addEventListener('click', () => sendSelected(false, true));
     document.getElementById('gab-load').addEventListener('click', () => {
       const value = document.getElementById('gab-url').value.trim();
-      state.sourceUrl = value || window.location.href;
-      state.password = null;
-      resolveContent(true);
+      const nextSource = value || window.location.href;
+      const sameSource = nextSource === state.sourceUrl;
+      if (!sameSource) {
+        state.passwordHashes.clear();
+        state.provisionalSelectedIds.clear();
+      }
+      state.sourceUrl = nextSource;
+      resolveContent(sameSource);
     });
     updateToolbar();
     return toolbar;
@@ -397,6 +408,66 @@
     return state.connected;
   }
 
+  function validContentId(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9-]{5,127}$/.test(value);
+  }
+
+  function sourceContentId(value) {
+    if (validContentId(value)) return value;
+    const match = String(value || '').match(/^https:\/\/(?:www\.)?gofile\.io\/d\/([^/?#]+)\/?$/i);
+    return match && validContentId(match[1]) ? match[1] : null;
+  }
+
+  function sessionPasswordHash(contentId) {
+    if (!validContentId(contentId)) return null;
+    try {
+      const value = window.sessionStorage?.getItem(`password|${contentId}`);
+      return typeof value === 'string' && /^[0-9a-fA-F]{64}$/.test(value) ? value.toLowerCase() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function passwordDigest(value) {
+    const bytes = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function credentialPayload(credentials) {
+    const payload = {};
+    for (const [contentId, digest] of [...credentials.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      payload[contentId] = digest;
+    }
+    return payload;
+  }
+
+  function selectedNodeIds() {
+    const ids = new Set();
+    for (const key of state.selectedKeys) {
+      const node = state.nodeByKey.get(key);
+      if (node?.id) ids.add(node.id);
+    }
+    return ids;
+  }
+
+  function isCurrentResolve(operation) {
+    return state.activeResolve === operation &&
+      state.resolveGeneration === operation.generation &&
+      state.sourceUrl === operation.sourceUrl &&
+      !operation.invalidated;
+  }
+
+  function invalidateResolve() {
+    state.resolveGeneration += 1;
+    const cancelPrompt = state.cancelPasswordPrompt;
+    state.cancelPasswordPrompt = null;
+    if (state.activeResolve) state.activeResolve.invalidated = true;
+    state.activeResolve = null;
+    state.resolving = false;
+    cancelPrompt?.();
+  }
+
   function resetResolution(preserveProvisional = false) {
     state.resolveId = null;
     state.root = null;
@@ -410,17 +481,77 @@
     updateToolbar();
   }
 
+  async function runResolveOperation(operation, request, askPassword) {
+    while (isCurrentResolve(operation)) {
+      const body = { url: operation.sourceUrl };
+      const hashes = credentialPayload(operation.credentials);
+      if (Object.keys(hashes).length) body.password_hashes = hashes;
+      try {
+        const result = await request(body);
+        return isCurrentResolve(operation) ? result : null;
+      } catch (error) {
+        if (!isCurrentResolve(operation)) return null;
+        if (error.code !== 'password_required' && error.code !== 'wrong_password') throw error;
+
+        const challengeId = validContentId(error.contentId)
+          ? error.contentId
+          : sourceContentId(operation.sourceUrl);
+        if (challengeId && !operation.credentials.has(challengeId)) {
+          const candidate = sessionPasswordHash(challengeId);
+          const candidateKey = candidate ? `${challengeId}\0${candidate}` : '';
+          if (candidate && !operation.triedStorage.has(candidateKey)) {
+            operation.triedStorage.add(candidateKey);
+            operation.credentials.set(challengeId, candidate);
+            continue;
+          }
+        }
+
+        const password = await askPassword(error.code === 'wrong_password', {
+          contentId: challengeId,
+          folderName: error.folderName,
+          relativePath: error.relativePath,
+        });
+        if (!isCurrentResolve(operation)) return null;
+        if (password === null) {
+          operation.cancelled = true;
+          return null;
+        }
+        const digest = await passwordDigest(password);
+        if (!isCurrentResolve(operation)) return null;
+        if (!challengeId) return null;
+        operation.credentials.set(challengeId, digest);
+      }
+    }
+    return null;
+  }
+
   async function resolveContent(preserveProvisional = false) {
-    if (state.resolving) return;
+    if (state.activeResolve) invalidateResolve();
+    const operation = {
+      generation: state.resolveGeneration + 1,
+      sourceUrl: state.sourceUrl,
+      credentials: new Map(state.passwordHashes),
+      preservedNodeIds: preserveProvisional ? new Set([...selectedNodeIds(), ...state.provisionalSelectedIds]) : new Set(),
+      triedStorage: new Set(),
+      invalidated: false,
+    };
+    state.resolveGeneration = operation.generation;
+    state.activeResolve = operation;
     state.resolving = true;
     resetResolution(preserveProvisional);
     ensureToolbar();
     setProgress(0, 0, 'Resolving GoFile content…', true);
     try {
-      const data = await gmRequest('POST', '/api/gofile/resolve', {
-        url: state.sourceUrl,
-        ...(state.password ? { password: state.password } : {}),
-      }, 0);
+      const data = await runResolveOperation(
+        operation,
+        (body) => gmRequest('POST', '/api/gofile/resolve', body, 0),
+        (wrong, context) => promptPassword(wrong, context),
+      );
+      if (!data && isCurrentResolve(operation) && operation.cancelled) {
+        setProgress(0, 0, 'Resolve canceled.', true);
+      }
+      if (!data || !isCurrentResolve(operation)) return null;
+      state.passwordHashes = new Map(operation.credentials);
       state.resolveId = data.resolve_id;
       state.root = data.root;
       state.topLevel = data.top_level || [];
@@ -428,31 +559,32 @@
       state.nodeByKey.clear();
       flattenTree(state.root);
       state.selectedKeys.clear();
-      if (state.provisionalSelectedIds.size) {
+      const selectedIds = new Set([...operation.preservedNodeIds, ...state.provisionalSelectedIds]);
+      if (selectedIds.size) {
         for (const node of state.nodeByKey.values()) {
-          if (state.provisionalSelectedIds.has(node.id)) state.selectedKeys.add(node.key);
+          if (selectedIds.has(node.id)) state.selectedKeys.add(node.key);
         }
         state.provisionalSelectedIds.clear();
       }
       injectCheckboxes();
       setProgress(0, 0, `Ready — ${data.file_count} files / ${formatBytes(data.total_size)}`, false);
+      return data;
     } catch (error) {
-      if (error.code === 'password_required' || error.code === 'wrong_password') {
-        state.password = null;
-        const password = await promptPassword(error.code === 'wrong_password');
-        state.resolving = false;
-        if (password !== null) {
-          state.password = password;
-          await resolveContent(true);
-        }
-        return;
+      if (isCurrentResolve(operation)) {
+        setProgress(0, 0, error.message, true);
+        toast(error.message, 'error');
       }
-      setProgress(0, 0, error.message, true);
-      toast(error.message, 'error');
+      return null;
     } finally {
-      state.resolving = false;
-      if (!state.root) injectCheckboxes();
-      updateToolbar();
+      if (isCurrentResolve(operation)) {
+        state.resolving = false;
+        state.activeResolve = null;
+        if (!state.root) {
+          for (const id of operation.preservedNodeIds) state.provisionalSelectedIds.add(id);
+          injectCheckboxes();
+        }
+        updateToolbar();
+      }
     }
   }
 
@@ -635,29 +767,63 @@
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128;
   }
 
-  function openModal(title, contentHtml, onReady) {
-    document.getElementById(MODAL_ID)?.remove();
+  function removeModal(backdrop, notify = true) {
+    if (!backdrop) return;
+    const onClose = backdrop.__gabOnClose;
+    backdrop.__gabOnClose = null;
+    if (notify) onClose?.();
+    backdrop.remove();
+  }
+
+  function openModal(title, contentHtml, onReady, onClose) {
+    removeModal(document.getElementById(MODAL_ID));
     const backdrop = document.createElement('div');
     backdrop.id = MODAL_ID;
     backdrop.className = 'gab-modal-backdrop';
     backdrop.innerHTML = `<div class="gab-modal-card ${pageLooksDark() ? 'gab-dark' : 'gab-light'}" role="dialog" aria-modal="true"><h3>${escapeHtml(title)}</h3>${contentHtml}</div>`;
-    backdrop.addEventListener('mousedown', (event) => {
-      if (event.target === backdrop) backdrop.remove();
-    });
+    backdrop.__gabOnClose = onClose || null;
+    const dismissOnBackdrop = (event) => {
+      if (event.target === backdrop) removeModal(backdrop);
+    };
+    backdrop.addEventListener('mousedown', dismissOnBackdrop);
+    backdrop.addEventListener('click', dismissOnBackdrop);
     document.body.appendChild(backdrop);
     onReady?.(backdrop.querySelector('.gab-modal-card'), backdrop);
     return backdrop;
   }
 
   function closeModal() {
-    document.getElementById(MODAL_ID)?.remove();
+    removeModal(document.getElementById(MODAL_ID));
   }
 
-  function promptPassword(wrong) {
+  function promptPassword(wrong, context = {}) {
     return new Promise((resolve) => {
-      const modal = openModal('GoFile Password', `
+      const target = context.relativePath || context.folderName || context.contentId || '';
+      let backdrop = null;
+      let settled = false;
+      let input = null;
+      let onCancel = null;
+      let onUnlock = null;
+      let onKeydown = null;
+      let onBackdropKeydown = null;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        if (input) input.removeEventListener('keydown', onKeydown);
+        if (backdrop) backdrop.removeEventListener('keydown', onBackdropKeydown);
+        card?.querySelector('#gab-password-cancel')?.removeEventListener('click', onCancel);
+        card?.querySelector('#gab-password-ok')?.removeEventListener('click', onUnlock);
+        if (state.cancelPasswordPrompt === cancel) state.cancelPasswordPrompt = null;
+        removeModal(backdrop, false);
+        resolve(value);
+      };
+      const cancel = () => finish(null);
+      state.cancelPasswordPrompt = cancel;
+      let card = null;
+      backdrop = openModal('GoFile Password', `
         <div class="gab-field">
           <div class="gab-muted" style="margin-bottom:.55rem">${wrong ? 'The previous password was rejected.' : 'This content is password protected.'}</div>
+          ${target ? `<div class="gab-muted" style="margin-bottom:.55rem">Target: ${escapeHtml(target)}</div>` : ''}
           <label for="gab-password">Password</label>
           <input id="gab-password" class="gab-input" type="password" autocomplete="off">
         </div>
@@ -665,15 +831,34 @@
           ${button('Cancel', 'gab-password-cancel')}
           ${button('Unlock', 'gab-password-ok', true)}
         </div>
-      `, (card, backdrop) => {
-        const input = card.querySelector('#gab-password');
-        const finish = (value) => { backdrop.remove(); resolve(value); };
-        card.querySelector('#gab-password-cancel').addEventListener('click', () => finish(null));
-        card.querySelector('#gab-password-ok').addEventListener('click', () => finish(input.value));
-        input.addEventListener('keydown', (event) => { if (event.key === 'Enter') finish(input.value); });
+      `, (readyCard, readyBackdrop) => {
+        card = readyCard;
+        input = card.querySelector('#gab-password');
+        onCancel = () => finish(null);
+        onUnlock = () => {
+          if (input.value === '') {
+            toast('Enter a password, or choose Cancel.', 'warning');
+            input.focus();
+            return;
+          }
+          finish(input.value);
+        };
+        onKeydown = (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            finish(null);
+          } else if (event.key === 'Enter' && !event.isComposing) {
+            event.preventDefault();
+            onUnlock();
+          }
+        };
+        onBackdropKeydown = onKeydown;
+        card.querySelector('#gab-password-cancel').addEventListener('click', onCancel);
+        card.querySelector('#gab-password-ok').addEventListener('click', onUnlock);
+        input.addEventListener('keydown', onKeydown);
+        readyBackdrop.addEventListener('keydown', onBackdropKeydown);
         input.focus();
-      });
-      return modal;
+      }, cancel);
     });
   }
 
@@ -950,8 +1135,10 @@
       const current = window.location.href;
       if (current === state.lastUrl) return;
       state.lastUrl = current;
+      invalidateResolve();
+      closeModal();
       state.sourceUrl = current;
-      state.password = null;
+      state.passwordHashes.clear();
       const input = document.getElementById('gab-url');
       if (input) input.value = current;
       state.provisionalSelectedIds.clear();
@@ -1003,5 +1190,16 @@
     if (/^https:\/\/gofile\.io\/d\//i.test(window.location.href)) await resolveContent(false);
   }
 
-  init();
+  if (window.__GAB_TEST_MODE__) {
+    window.__GAB_TEST_API__ = {
+      state,
+      runResolveOperation,
+      promptPassword,
+      invalidateResolve,
+      openModal,
+      closeModal,
+    };
+  } else {
+    init();
+  }
 })();

@@ -1,4 +1,5 @@
 # filename: tests/test_core.py
+import hashlib
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -14,8 +15,11 @@ except ModuleNotFoundError as exc:
     else:
         raise
 from gofile import (
+    ContentAccessDenied,
     GoFileClient,
+    GoFileError,
     InvalidContent,
+    PasswordRequired,
     RateLimited,
     ResolvedFile,
     ResolvedNode,
@@ -210,9 +214,134 @@ class ResolveTests(unittest.TestCase):
                 }
             },
         }
-        from gofile import GoFileError
         with self.assertRaises(GoFileError):
             client.resolve("root123")
+
+    def test_folder_credentials_are_explicit_and_inherited_per_branch(self):
+        client = GoFileClient(session=Mock())
+        client.token = "guest-token"
+        root_digest = "a" * 64
+        child_digest = "b" * 64
+        calls = []
+        tree = {
+            "root123": {
+                "id": "root123", "name": "Root", "type": "folder", "childrenCount": 2,
+                "children": {
+                    "b": {"id": "folder01", "name": "B", "type": "folder"},
+                    "c": {"id": "folder02", "name": "C", "type": "folder"},
+                },
+            },
+            "folder01": {
+                "id": "folder01", "name": "B", "type": "folder", "childrenCount": 1,
+                "children": {"nested": {"id": "folder03", "name": "Nested", "type": "folder"}},
+            },
+            "folder02": {
+                "id": "folder02", "name": "C", "type": "folder", "childrenCount": 1,
+                "children": {"file": {"id": "file002", "name": "c.bin", "type": "file", "size": 2, "link": "https://cold.gofile.io/c"}},
+            },
+            "folder03": {
+                "id": "folder03", "name": "Nested", "type": "folder", "childrenCount": 1,
+                "children": {"file": {"id": "file003", "name": "nested.bin", "type": "file", "size": 3, "link": "https://cold.gofile.io/n"}},
+            },
+        }
+
+        def fetch(content_id, password=None, *, password_hash=None):
+            calls.append((content_id, password, password_hash))
+            return tree[content_id]
+
+        client.fetch_folder = fetch
+        result = client.resolve(
+            "root123",
+            password_hashes={"root123": root_digest, "folder01": child_digest},
+        )
+
+        self.assertEqual(result.root.file_count, 2)
+        self.assertEqual(calls, [
+            ("root123", None, root_digest),
+            ("folder01", None, child_digest),
+            ("folder03", None, child_digest),
+            ("folder02", None, root_digest),
+        ])
+
+    def test_password_challenge_adds_child_display_context(self):
+        client = GoFileClient(session=Mock())
+        client.token = "guest-token"
+        client.fetch_folder = lambda content_id, password=None: (
+            {"id": "root123", "name": "Root", "type": "folder", "childrenCount": 1,
+             "children": {"sub": {"id": "folder01", "name": "Subs", "type": "folder"}}}
+            if content_id == "root123"
+            else (_ for _ in ()).throw(PasswordRequired("required", content_id=content_id))
+        )
+
+        with self.assertRaises(PasswordRequired) as caught:
+            client.resolve("root123")
+        self.assertEqual(caught.exception.content_id, "folder01")
+        self.assertEqual(caught.exception.folder_name, "Subs")
+        self.assertEqual(caught.exception.relative_path, "Root/Subs")
+
+
+class FolderAccessEnvelopeTests(unittest.TestCase):
+    def _client_for_payload(self, payloads):
+        session = Mock()
+        response = Mock(status_code=200)
+        response.json.side_effect = payloads
+        session.get.return_value = response
+        client = GoFileClient(session=session)
+        client.token = "guest-token"
+        client.request_interval = 0
+        return client, session
+
+    def test_ok_envelope_password_required_is_not_empty_success(self):
+        client, session = self._client_for_payload([{
+            "status": "ok",
+            "data": {"id": "folder01", "name": "Locked", "canAccess": False, "password": True, "passwordStatus": "passwordRequired"},
+        }])
+        with self.assertRaises(PasswordRequired) as caught:
+            client.fetch_folder("folder01")
+        self.assertEqual(caught.exception.content_id, "folder01")
+        self.assertEqual(session.get.call_count, 1)
+
+    def test_ok_envelope_wrong_password_is_distinguished(self):
+        client, _ = self._client_for_payload([{
+            "status": "ok",
+            "data": {"id": "folder01", "canAccess": False, "password": True, "passwordStatus": "passwordWrong"},
+        }])
+        from gofile import WrongPassword
+        with self.assertRaises(WrongPassword):
+            client.fetch_folder("folder01", password_hash="c" * 64)
+
+    def test_ok_envelope_non_password_denial_is_not_a_challenge(self):
+        client, _ = self._client_for_payload([{
+            "status": "ok",
+            "data": {"id": "folder01", "canAccess": False, "password": False},
+        }])
+        with self.assertRaises(ContentAccessDenied):
+            client.fetch_folder("folder01")
+
+    def test_accessible_payload_with_protection_metadata_is_success(self):
+        client, _ = self._client_for_payload([{
+            "status": "ok",
+            "data": {"id": "folder01", "name": "Unlocked", "canAccess": True, "password": True,
+                     "passwordStatus": "passwordRequired", "children": {}},
+        }])
+        data = client.fetch_folder("folder01", password_hash="d" * 64)
+        self.assertEqual(data["name"], "Unlocked")
+        self.assertEqual(data["children"], {})
+
+    def test_second_page_access_denial_discards_partial_folder(self):
+        client = GoFileClient(session=Mock())
+        client.token = "guest-token"
+        client.request_interval = 0
+        first = {
+            "status": "ok",
+            "data": {"id": "folder01", "name": "Paged", "canAccess": True, "childrenCount": 1001,
+                     "children": {str(i): {"id": f"file{i:06d}", "type": "file", "name": f"f{i}", "link": "https://cold.gofile.io/x"} for i in range(1000)}},
+        }
+        second_error = PasswordRequired("required", content_id="folder01")
+        client._request_folder_page = Mock(side_effect=[first, second_error])
+        with self.assertRaises(PasswordRequired):
+            client.fetch_folder("folder01")
+        self.assertEqual(client._request_folder_page.call_count, 2)
 
 
 class RateLimitSafetyTests(unittest.TestCase):
@@ -314,7 +443,8 @@ class HelperRateLimitStaticTests(unittest.TestCase):
 
     def test_helper_has_source_cache(self):
         self.assertIn("_source_cache", self.source)
-        self.assertIn("password_digest = hashlib.sha256", self.source)
+        self.assertIn("_password_digest", self.source)
+        self.assertIn("password_hashes", self.source)
 
 
 
@@ -363,13 +493,14 @@ class UserscriptStaticTests(unittest.TestCase):
         start = self.source.index("  async function resolveContent(")
         end = self.source.index("  function discoverVisibleDomItems()", start)
         resolve_block = self.source[start:end]
-        self.assertIn("if (!state.root) injectCheckboxes();", resolve_block)
+        self.assertIn("if (!state.root)", resolve_block)
+        self.assertIn("injectCheckboxes();", resolve_block)
 
     def test_recursive_resolve_has_no_userscript_deadline(self):
         start = self.source.index("  async function resolveContent(")
         end = self.source.index("  function discoverVisibleDomItems()", start)
         resolve_block = self.source[start:end]
-        self.assertIn("}, 0);", resolve_block)
+        self.assertIn("gmRequest('POST', '/api/gofile/resolve', body, 0)", resolve_block)
         self.assertNotIn("180000", resolve_block)
         self.assertIn("...(timeout > 0 ? { timeout } : {}),", self.source)
 
@@ -403,6 +534,125 @@ class FlaskGuardTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()["error"]["code"], "invalid_content")
+
+    def test_resolve_requires_json_object(self):
+        response = self.client.post(
+            "/api/gofile/resolve",
+            headers={"X-GoFile-ABDM": "1", "Content-Type": "application/json"},
+            data="[]",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"]["code"], "invalid_body")
+
+    def test_invalid_password_hashes_are_rejected_before_resolve(self):
+        invalid_values = [None, [], 7, {"folder01": "not-a-digest"}]
+        for invalid in invalid_values:
+            with self.subTest(invalid=invalid), patch.object(app_module._gofile_client, "resolve") as resolve_mock:
+                response = self.client.post(
+                    "/api/gofile/resolve",
+                    headers={"X-GoFile-ABDM": "1"},
+                    json={"content_id": "root123", "password_hashes": invalid},
+                )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.get_json()["error"]["code"], "invalid_password_hashes")
+            resolve_mock.assert_not_called()
+
+        too_many = {f"id{index:04d}": "a" * 64 for index in range(1001)}
+        response = self.client.post(
+            "/api/gofile/resolve",
+            headers={"X-GoFile-ABDM": "1"},
+            json={"content_id": "root123", "password_hashes": too_many},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"]["code"], "invalid_password_hashes")
+
+    def test_password_challenge_returns_safe_target_context_and_no_source_cache(self):
+        from gofile import PasswordRequired
+
+        error = PasswordRequired(
+            "This GoFile content requires a password.",
+            content_id="folder01",
+            folder_name="Subs",
+            relative_path="Root/Subs",
+        )
+        with patch.object(app_module._gofile_client, "resolve", side_effect=error):
+            response = self.client.post(
+                "/api/gofile/resolve",
+                headers={"X-GoFile-ABDM": "1"},
+                json={"content_id": "root123", "password_hashes": {"root123": "A" * 64}},
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], {
+            "code": "password_required",
+            "message": "This GoFile content requires a password.",
+            "content_id": "folder01",
+            "folder_name": "Subs",
+            "relative_path": "Root/Subs",
+        })
+        self.assertEqual(len(app_module._source_cache), 0)
+
+    def test_content_access_denied_returns_403_without_password_prompt_code(self):
+        with patch.object(app_module._gofile_client, "resolve") as resolve_mock:
+            from gofile import ContentAccessDenied
+            resolve_mock.side_effect = ContentAccessDenied("GoFile content access was denied.", content_id="folder01")
+            response = self.client.post(
+                "/api/gofile/resolve",
+                headers={"X-GoFile-ABDM": "1"},
+                json={"content_id": "root123"},
+            )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"]["code"], "content_access_denied")
+        self.assertEqual(response.get_json()["error"]["content_id"], "folder01")
+
+    def test_password_map_normalization_and_root_legacy_precedence(self):
+        root_digest = "a" * 64
+        child_digest = "b" * 64
+        root = ResolvedNode(key="root-key", id="root123", type="folder", name="Root")
+        result = ResolveResult(content_id="root123", root_name="Root", root=root, files={})
+        observed = []
+
+        def resolve(content_id, *, password_hashes):
+            observed.append((content_id, password_hashes))
+            return result
+
+        with patch.object(app_module._gofile_client, "resolve", side_effect=resolve):
+            response = self.client.post(
+                "/api/gofile/resolve",
+                headers={"X-GoFile-ABDM": "1"},
+                json={
+                    "content_id": "root123",
+                    "password": "legacy plaintext",
+                    "password_hashes": {"folder01": child_digest, "root123": root_digest.upper()},
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(observed, [("root123", {"folder01": child_digest, "root123": root_digest})])
+
+    def test_legacy_password_is_hashed_once_even_when_it_looks_like_a_digest(self):
+        root = ResolvedNode(key="root-key", id="root123", type="folder", name="Root")
+        result = ResolveResult(content_id="root123", root_name="Root", root=root, files={})
+        observed = []
+
+        def resolve(content_id, *, password_hashes):
+            observed.append(password_hashes)
+            return result
+
+        plaintext = "A" * 64
+        with patch.object(app_module._gofile_client, "resolve", side_effect=resolve):
+            response = self.client.post(
+                "/api/gofile/resolve",
+                headers={"X-GoFile-ABDM": "1"},
+                json={"content_id": "root123", "password": plaintext},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(observed, [{"root123": hashlib.sha256(plaintext.encode("utf-8")).hexdigest()}])
+
+    def test_source_cache_key_is_order_case_invariant_but_child_sensitive(self):
+        first = app_module._source_cache_key("root123", password_hashes={"folder01": "A" * 64, "root123": "B" * 64})
+        same = app_module._source_cache_key("root123", password_hashes={"root123": "b" * 64, "folder01": "a" * 64})
+        different = app_module._source_cache_key("root123", password_hashes={"folder01": "C" * 64, "root123": "B" * 64})
+        self.assertEqual(first, same)
+        self.assertNotEqual(first, different)
 
     def test_send_rejects_non_integer_queue_id(self):
         response = self.client.post(
