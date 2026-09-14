@@ -2,72 +2,69 @@
 
 この文書は、`README.md` より内部実装寄りの情報をまとめた、開発継続・保守・AI への引き継ぎ用ドキュメントです。
 
-開発を始める前に、少なくとも次を確認してください。
+開発開始時は最低限、次を確認してください。
 
 1. `README.md`
-2. この `DEVELOPMENT.md`
+2. `DEVELOPMENT.md`
 3. `CHANGELOG.md`
 4. `docs/ARCHITECTURE.md`
 5. 最新の `main` のコード
 
-仕様変更を行った場合は、コードだけでなく該当ドキュメントも同じ変更で更新してください。
+仕様変更時はコードだけでなく関連ドキュメントも同じ変更で更新してください。
 
 ---
 
 ## 1. 現在の状態
 
-調査基準日: **2026-09-14**
+基準日: **2026-09-14**
 
-- リポジトリ: `Hoyomaru/gofile-abdm-helper`
-- デフォルトブランチ: `main`
-- 調査時 `main` HEAD: `8359b5fb2d09d0919aedcdc72418994441126c3a`
-- `VERSION`: `1.0.3`
-- Userscript `@version`: `1.0.3`
-- 安定版として文書化されている版: `v1.0.3`
-- `main` には `v1.0.3` より後の **Unreleased** 変更として、子フォルダを含むパスワード保護ツリー対応が入っている
-- Git tag は調査時点で `v1.0.0` と `v1.0.3` を確認
-- GitHub Release は調査時点で未作成
-- `.github/` / GitHub Actions workflow は調査時点で存在しない
-- CI による自動テストは未導入
+- repository: `Hoyomaru/gofile-abdm-helper`
+- default branch: `main`
+- 正式リリース体系: **`v1.0.0` から開始**
+- `VERSION`: `1.0.0`
+- `v1.0.0`: 現在の `main` に存在する機能をまとめた初回正式リリース
+- GitHub Actions / CI: 未導入
+- 専用 build / binary artifact: なし
 
-つまり、**`VERSION=1.0.3` だから `main` が v1.0.3 と完全一致するわけではありません。** 開発時は `CHANGELOG.md` の `[Unreleased]` と `main` のコードも必ず確認してください。
+### 過去の version 名について
 
-### 実機・テスト状況の区分
+開発途中の commit / PR には `v1.0.1`～`v1.0.3` という名称が残っています。
 
-#### 確認済みとして履歴に残っているもの
+これらは今後の **正式公開リリース履歴としては扱いません**。Tag / GitHub Release の公開履歴を整理し、現在の完成状態を `v1.0.0` として最初に公開します。
 
-`v1.0.3` の PR には次の検証結果が記録されています。
+履歴調査では commit / PR の内容を参照して構いませんが、利用者向け Version 判定は `VERSION` / `CHANGELOG.md` / release tag を正としてください。
 
-- `python -m unittest discover -s tests -v`: 41 tests passed
-- `node --check gofile-abdm.user.js`: passed
+### テスト状況
 
-これは **v1.0.3 リリース時点の記録**です。
+現行 repository には次があります。
 
-#### 現在の `main` でコード上確認できるもの
+- Python tests: `tests/test_core.py`
+- Userscript Node tests: `tests/test_userscript.cjs`
 
-- Python 単体テスト: `tests/test_core.py`
-- Userscript の Node テスト: `tests/test_userscript.cjs`
-- 子フォルダ別パスワード、資格情報継承、アクセス拒否 envelope、キャッシュ分離、SPA 遷移時の stale resolve 排除、パスワードモーダル終了経路などの回帰テストが存在する
+開発途中の PR では Python test / syntax check の成功記録がありますが、**今回の v1.0.0 release preparation で実機 E2E を新たに実行したとは記録しません**。
 
-#### 未確認 / 要検証
+リリース前に推奨する確認:
 
-調査時点では CI がないため、**現在の `main` HEAD に対してこの調査中にテストが実行された事実は確認できません**。
+```bash
+python -m unittest discover -s tests -v
+node --test tests/test_userscript.cjs
+python -m py_compile app.py gofile.py abdm.py tray.py
+node --check gofile-abdm.user.js
+```
 
-また、次はコードや履歴だけでは実機確認済みと断定できません。
+未確認として扱うもの:
 
-- 現在の GoFile 実サービス上でのパスワード付きルート / 子フォルダの E2E
-- Violentmonkey と Tampermonkey の両方での同一挙動
-- GoFile の `sessionStorage` 補助経路が各 Userscript manager で利用できること
-- 現在の ABDM バージョンでの実ファイル取得完了までの E2E
-- Linux 上での手動 Helper 運用
-
-これらは **未確認** として扱ってください。
+- 現在の GoFile 実サービスでの root / child password E2E
+- Violentmonkey / Tampermonkey 双方での網羅確認
+- 各 Userscript manager での GoFile `sessionStorage` 補助経路
+- 現在の ABDM で実 download 完了までの E2E
+- Linux/macOS の網羅実機確認
 
 ---
 
 ## 2. プロジェクトの責務
 
-このプロジェクトは、GoFile のページ上で選択したファイルを AB Download Manager（ABDM）へ登録するための橋渡しです。
+この project は GoFile page と AB Download Manager の間の localhost bridge です。
 
 ```text
 GoFile page
@@ -75,51 +72,53 @@ GoFile page
 Userscript
   ↓ GM_xmlhttpRequest
 Flask Helper (127.0.0.1:8765)
-  ├─ GoFile API からツリー / direct URL / 必要ヘッダーを解決
-  └─ ABDM REST API へタスク登録
+  ├─ GoFile API から tree / direct URL / headers を resolve
+  └─ ABDM REST API へ download task 登録
        ↓
 AB Download Manager (127.0.0.1:15151)
 ```
 
-Python Helper 自身はファイル本体を保存しません。実ダウンロード、速度、ETA、pause/resume/cancel、履歴は ABDM の責務です。
+Helper 自身は file body を download /保存しません。
 
 ---
 
-## 3. 主要ファイルと責務
+## 3. 主要ファイル
 
-| ファイル | 主な責務 | 主な副作用 |
-|---|---|---|
-| `gofile-abdm.user.js` | GoFile UI 統合、選択、設定、resolve/send 呼び出し、パスワード入力 | GM ストレージ、DOM、localhost Helper への通信 |
-| `app.py` | localhost Flask API、入力検証、resolve キャッシュ、GoFile resolve の直列化、ABDM 送信仲介 | メモリキャッシュ、GoFile/ABDM クライアント呼び出し |
-| `gofile.py` | GoFile guest session、Website Token、フォルダ取得、再帰 resolve、パス安全化 | GoFile API 通信、guest token のプロセスメモリ保持 |
-| `abdm.py` | ABDM queues 取得、接続確認、download task 登録 | ABDM REST API への GET/POST |
-| `tray.py` | Windows tray、Helper プロセス監視、自動起動、ログ | Windows Registry、helper process、`helper.log` |
-| `start-tray.cmd` | Windows で `pythonw.exe tray.py` を非表示起動 | tray process 起動 |
-| `tests/test_core.py` | Python 側の主要回帰テスト | mock 中心。通常は外部通信なし |
-| `tests/test_userscript.cjs` | Userscript resolve/password 状態機械の Node テスト | VM / fake DOM 上で実行 |
-| `VERSION` | リリース版番号 | なし |
+| ファイル | 責務 |
+|---|---|
+| `gofile-abdm.user.js` | GoFile UI 統合、selection、settings、resolve/send、password prompt |
+| `app.py` | localhost Flask API、validation、cache、resolve serialization、ABDM 仲介 |
+| `gofile.py` | GoFile guest session、Website Token、recursive resolve、path sanitize |
+| `abdm.py` | ABDM `/queues` / `/start-headless-download` client |
+| `tray.py` | Windows tray、Helper monitor、自動起動、log |
+| `start-tray.cmd` | Windows tray launcher |
+| `tests/test_core.py` | Python regression tests |
+| `tests/test_userscript.cjs` | Userscript state / password regression tests |
+| `VERSION` | repository release version |
 
-より大きな構造は [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) を参照してください。
+全体構造は [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) を参照してください。
 
 ---
 
-## 4. Userscript の状態
+## 4. Userscript state
 
-`gofile-abdm.user.js` の `state` がブラウザ側の中心状態です。主要項目は次のとおりです。
+`gofile-abdm.user.js` の `state` が browser 側の主要 state です。
 
-- `sourceUrl`: 現在 resolve 対象として扱う URL
-- `resolveId`: Helper が発行した不透明な resolve session ID
-- `root`, `topLevel`, `currentLevel`, `nodeByKey`: 解決済みツリー
-- `selectedKeys`: 解決済みノードの選択
-- `provisionalSelectedIds`: resolve 前 / 失敗中に DOM 上で暫定選択した GoFile content ID
-- `failedFileKeys`:直前の送信で失敗した file key
-- `lastSendPreserveStructure`: Retry Failed 用の送信モード
-- `lastSendQueueId`: Retry Failed 用の queue ID
-- `passwordHashes`: content ID → SHA-256 digest
-- `resolveGeneration`, `activeResolve`: stale resolve を無効化する世代管理
-- `resolving`, `sending`: UI 操作抑止用フラグ
+重要項目:
 
-### resolve 状態遷移
+- `sourceUrl`
+- `resolveId`
+- `root`, `topLevel`, `currentLevel`, `nodeByKey`
+- `selectedKeys`
+- `provisionalSelectedIds`
+- `failedFileKeys`
+- `lastSendPreserveStructure`
+- `lastSendQueueId`
+- `passwordHashes`
+- `resolveGeneration`, `activeResolve`
+- `resolving`, `sending`
+
+### resolve state
 
 ```text
 IDLE
@@ -128,111 +127,109 @@ RESOLVING
   ├─ password_required / wrong_password
   │      ↓
   │  PASSWORD_PROMPT
-  │      ├─ Unlock → digest 更新 → RESOLVING
-  │      └─ Cancel / Escape / 背景 / modal replacement → CANCELED
+  │      ├─ Unlock → digest update → RESOLVING
+  │      └─ Cancel / Escape / background / replacement → CANCELED
   ├─ success → READY
-  └─ error   → ERROR（暫定選択は復元）
+  └─ error   → ERROR
 ```
 
-新しい navigation / Load が始まると世代を進め、以前の非同期 response は `isCurrentResolve()` で捨てます。
+新しい navigation / Load は generation を進め、古い async response を `isCurrentResolve()` で破棄します。
 
-### send 状態遷移
+### send state
 
 ```text
 READY
-  ↓ Send to ABDM / Send Flat
+ ↓
 CHECK_ABDM
-  ↓ connected
-SENDING (1 file = 1 Helper request)
-  ↓
+ ↓
+SENDING (normally one file per Helper request)
+ ↓
 RESULT
-  ├─ all success
-  └─ failedFileKeys → Retry Failed
+ ├─ success
+ └─ failedFileKeys → Retry Failed
 ```
 
-送信進捗は **ABDM への登録進捗**であり、実ダウンロード進捗ではありません。
+send progress は ABDM への task registration progress です。
 
 ---
 
-## 5. 永続化と一時状態
+## 5. 永続化
 
-### Userscript GM ストレージ
+### Userscript GM storage
 
-永続化される UI 設定は次の3種類です。
+```text
+gofile_abdm_last_save_folder
+gofile_abdm_presets
+gofile_abdm_queue_id
+```
 
-| キー | 用途 |
-|---|---|
-| `gofile_abdm_last_save_folder` | 最後に使用した Save folder |
-| `gofile_abdm_presets` | Save folder プリセット |
-| `gofile_abdm_queue_id` | 選択中 ABDM queue ID |
+password / GoFile token は保存しません。
 
-パスワードや GoFile guest token はここへ保存しません。
+### GoFile sessionStorage 補助
 
-### GoFile `sessionStorage` 補助
+password challenge 時、対象 ID の `password|<content-id>` を一度だけ候補として読む場合があります。
 
-Userscript は password challenge 時に、対象 ID について `password|<content-id>` を一度だけ候補として読むことがあります。
+- 64桁 SHA-256 hex のみ
+- 全 storage を scan しない
+- Userscript 自身は保存しない
+- reject 値を同じ operation で blind retry しない
 
-- 全 storage を走査しない
-- 値は 64 桁 SHA-256 hex の場合のみ候補にする
-- Userscript 自身はこのキーへ保存しない
-- 拒否された候補は繰り返し盲目的に使わない
+### Helper memory
 
-### Helper メモリ
+TTL 20分:
 
-`app.py` には2種類の TTL 20分キャッシュがあります。
+- `_source_cache`: source + credential map の resolve 結果
+- `_cache`: opaque `resolve_id` → `ResolveResult`
 
-- `_source_cache`: 同じ GoFile source + credential map の再 resolve を抑える
-- `_cache`: Userscript へ返す `resolve_id` から `ResolveResult` を引く
+Helper restart で消えます。
 
-Helper 再起動で両方消えます。
+GoFile guest token も process memory のみです。
 
-`GoFileClient` の guest token も Helper プロセスのメモリ内だけです。
+### Windows Registry / log
 
-### Windows Registry / ログ
-
-`tray.py` の **Start with Windows** は次を使用します。
+startup:
 
 ```text
 HKCU\Software\Microsoft\Windows\CurrentVersion\Run
 value: GoFileABDMHelper
 ```
 
-ログ:
+log:
 
 ```text
 helper.log
 helper.log.1
 ```
 
-`helper.log` が 2 MiB を超えていた場合、**Helper 起動時**に `.1` へローテーションします。稼働中に連続監視して 2 MiB で即ローテーションする実装ではありません。
+2 MiB 超の rotation 判定は Helper 起動時です。
 
 ---
 
-## 6. localhost Helper API
+## 6. Helper API
 
-すべての `/api/*` リクエストは loopback からであることに加え、次の marker が必要です。
+すべての `/api/*` は loopback request + 次の marker を要求します。
 
 ```http
 X-GoFile-ABDM: 1
 ```
 
-POST/PUT/PATCH は JSON 必須です。
+POST / PUT / PATCH は JSON 必須です。
 
 ### `GET /health`
 
-tray の health check 用です。API marker は不要です。
+tray health check。marker 不要。
 
 ### `GET /api/abdm/status`
 
-ABDM の `GET /queues` を使って疎通確認します。
+ABDM `GET /queues` を使って connection を確認。
 
 ### `GET /api/abdm/queues`
 
-ABDM queue 一覧を返します。ABDM エラー時は `502 abdm_offline`。
+ABDM queue list。
 
 ### `POST /api/gofile/resolve`
 
-入力の中心:
+代表入力:
 
 ```json
 {
@@ -243,27 +240,29 @@ ABDM queue 一覧を返します。ABDM エラー時は `502 abdm_offline`。
 }
 ```
 
-後方互換としてルート用の平文 `password` も受け付けます。この場合、64桁 hex に見えても **平文として SHA-256 を1回計算**します。
+legacy compatibility として root 用 `password` plaintext も受け付けます。
 
-`password_hashes` は最大1000件で、キーは有効な content ID、値は64桁 hex に限定されます。
+`password_hashes`:
 
-主なエラー分類:
+- max 1000 entries
+- key: valid content ID
+- value: 64-digit SHA-256 hex
 
-| HTTP | code | 意味 |
-|---:|---|---|
-| 400 | `invalid_body`, `invalid_content`, `invalid_password_hashes` 等 | 入力不正 |
-| 401 | `password_required`, `wrong_password` | password challenge |
-| 403 | `content_access_denied` | password 以外を含むアクセス拒否 |
-| 404 | `not_found` | GoFile content 不明 |
-| 429 | `rate_limited` | GoFile rate limit |
-| 502 | `website_token_rejected`, `gofile_error` | 上流 GoFile 側の失敗 |
-| 500 | `internal_error` | 想定外。秘密値を応答へ含めない |
+主な error:
 
-成功時、Userscript には tree metadata と不透明な file key を返します。direct URL / Cookie は返しません。
+| HTTP | code |
+|---:|---|
+| 400 | `invalid_body`, `invalid_content`, `invalid_password_hashes` 等 |
+| 401 | `password_required`, `wrong_password` |
+| 403 | `content_access_denied` |
+| 404 | `not_found` |
+| 429 | `rate_limited` |
+| 502 | `website_token_rejected`, `gofile_error` |
+| 500 | `internal_error` |
+
+成功時に Userscript へ返す tree には direct URL / Cookie を含めません。
 
 ### `POST /api/abdm/send`
-
-主な入力:
 
 ```json
 {
@@ -275,49 +274,55 @@ ABDM queue 一覧を返します。ABDM エラー時は `502 abdm_offline`。
 }
 ```
 
-制限:
+validation:
 
-- `file_keys`: 1リクエスト最大1000件
-- `save_root`: 最大1000文字、NUL 不可
-- `queue_id`: integer または null
-- expired `resolve_id`: HTTP 410 `resolve_expired`
+- `file_keys`: max 1000
+- `save_root`: max 1000 chars, NUL forbidden
+- `queue_id`: integer / null
+- expired `resolve_id`: 410 `resolve_expired`
 
-現行 Userscript は通常1ファイルずつこの endpoint を呼びます。
+現行 Userscript は通常1 fileずつ送ります。
 
 ---
 
-## 7. 外部 API
+## 7. GoFile API
 
-### GoFile
+主な endpoint:
 
-コード上で直接使用している主な endpoint:
+| Method | Endpoint | 用途 |
+|---|---|---|
+| POST | `https://api.gofile.io/accounts` | guest token |
+| GET | `https://api.gofile.io/contents/<content-id>` | folder/file metadata |
 
-| Method | Endpoint | 用途 | 書き込み |
-|---|---|---|---|
-| POST | `https://api.gofile.io/accounts` | guest account/token 取得 | GoFile 側で guest session を作る |
-| GET | `https://api.gofile.io/contents/<content-id>` | folder/file metadata 解決 | いいえ |
+### Website Token
 
-`/contents` は pageSize 1000 で pagination します。
-
-認証関連 header:
-
-- `Authorization: Bearer <guest-token>`
-- `X-Website-Token`
-- `X-BL`
-- `User-Agent`
-- `Origin`, `Referer`
-
-`X-Website-Token` は固定 token ではなく、現在の実装では概ね次を SHA-256 します。
+概念上:
 
 ```text
-User-Agent :: language :: guest-token :: 4-hour-window :: salt
+sha256(User-Agent :: language :: guest-token :: 4-hour-window :: salt)
 ```
 
-`salt`、UA、language は環境変数で上書きできます。
+環境変数:
 
-### AB Download Manager
+- `GOFILE_WT_SALT`
+- `GOFILE_USER_AGENT`
+- `GOFILE_LANGUAGE`
+- `GOFILE_REQUEST_INTERVAL`
 
-接続先は固定です。
+### Rate limit
+
+- default pacing: 0.75 sec
+- HTTP 429 / API rate limit: immediate stop
+- blind automatic retry: しない
+- recursive resolves: process 内 serialize
+
+この安全条件を速度目的で弱めないでください。
+
+---
+
+## 8. ABDM API
+
+base URL:
 
 ```text
 http://127.0.0.1:15151
@@ -325,178 +330,174 @@ http://127.0.0.1:15151
 
 使用 endpoint:
 
-| Method | Endpoint | 用途 |
-|---|---|---|
-| GET | `/queues` | queue 一覧 / connection check |
-| POST | `/start-headless-download` | download task 登録 |
+```text
+GET  /queues
+POST /start-headless-download
+```
 
-送信するのは ABDM の公開 REST API に文書化された `downloadSource`、`folder`、`name`、`queueId` の範囲です。
+送信 field:
+
+- `downloadSource.link`
+- `downloadSource.headers`
+- `downloadSource.downloadPage`
+- optional `folder`
+- optional `name`
+- optional `queueId`
+
+Default queue の場合は `queueId` を省略します。
+
+Save folder empty の場合は `folder` を省略します。
 
 ---
 
-## 8. 再試行・レート制限ポリシー
+## 9. Path safety
 
-| 事象 | 現在の処理 |
+GoFile-derived segment は `sanitize_segment()` / `sanitize_relative_path()` を通します。
+
+対象:
+
+- slash / backslash
+- `:*?"<>|`
+- NUL / control chars
+- `.` / `..`
+- Windows reserved names
+- trailing dot / space
+
+user-selected `save_root` 自体は separator normalization 以上に勝手に変更しません。
+
+---
+
+## 10. Retry policy
+
+| 条件 | 現在の処理 |
 |---|---|
-| guest account 作成の通常通信失敗 | 最大3回、1.5秒刻みの待機 |
-| guest account で 429 / API rate limit | 即停止、再試行しない |
-| content request timeout | 最大4 attempt、2/4/6秒 backoff |
-| content 429 / API rate limit | 即停止、再試行しない |
-| Website Token reject | 現在 window 失敗後に前 window を試す経路あり |
-| password required / wrong | 同じ resolve operation 内で資格情報を更新して同じ root を再 resolve |
-| ABDM GET/POST 通信失敗 | 自動再試行しない |
-| 個別 ABDM task 失敗 | 残りを継続し、`Retry Failed` 用に記録 |
+| GoFile guest token temporary error | limited retry |
+| GoFile content timeout | limited retry |
+| Website Token rejection | adjacent time window を試す経路あり |
+| HTTP/API 429 | **retry せず stop** |
+| password required/wrong | user challenge → same root re-resolve |
+| access denied | stop |
+| ABDM individual failure | remaining files continue |
+| ABDM ambiguous POST result | automatic blind retry しない |
 
-GoFile recursive content request はデフォルト `0.75s` 間隔で pace します。`GOFILE_REQUEST_INTERVAL` で変更でき、0で無効化できます。
-
-### resolve の排他
-
-`app.py` の `_resolve_lock` により recursive resolve は直列化されます。待っている同一 resolve は lock 内でキャッシュを再確認します。
+`Retry Failed` は user action です。
 
 ---
 
-## 9. クラッシュ / 再起動時
+# 絶対に壊してはいけない不変条件
 
-### Helper 再起動
+1. Helper を LAN へ bind しない。
+2. ABDM の接続先を user-controlled arbitrary host にしない。
+3. generic URL fetch / proxy endpoint を追加しない。
+4. `X-GoFile-ABDM` marker guard を弱めない。
+5. mutation request の JSON guard を弱めない。
+6. GoFile URL / direct link host validation を弱めない。
+7. direct URL / Cookie / token / password を UI / log / error へ不用意に露出しない。
+8. GoFile-derived path sanitization を削除しない。
+9. 429 を blind retry して request を増幅させない。
+10. access-denied / password challenge の途中 tree を完成済み成功結果として cache / send しない。
+11. stale resolve response で新しい navigation state を上書きしない。
+12. ABDM POST の結果不明時に automatic resend を追加しない。idempotency を設計してから行う。
 
-失われるもの:
+「便利だから」という理由だけでこれらを弱めないでください。
 
-- guest token
-- `_source_cache`
-- `resolve_id` キャッシュ
-- Helper 側の in-flight 処理
+---
+
+## 11. 過去に修正した重要な問題
+
+正式リリース前の開発履歴で次を修正しています。
+
+### Rate-limit amplification
+
+- guest session 再利用
+- resolve cache
+- resolve serialization
+- request pacing
+- 429 immediate stop
+
+### Provisional checkbox regression
+
+resolve failure 後、DOM mutation がなくても provisional checkbox を復元するよう修正。
+
+### Fixed 180-second Userscript deadline
+
+recursive resolve に Userscript-side fixed deadline を置かない設計へ変更。
+
+### Password access envelope
+
+HTTP 200 / `status: ok` でも `canAccess: false` を success としないよう修正。
+
+### Password modal unresolved Promise
+
+Cancel / Escape / background / replacement / navigation の全 close route で operation が終了するよう修正。
+
+### Stale resolve response
+
+resolve generation guard で navigation 後の stale response を無視。
+
+---
+
+## 12. 現在の既知問題 / 要検証
+
+### `resolve_expired` 後の selection
+
+410 を受けると再 resolve しますが、元 selection を必ず保持して自動再送する保証はありません。
+
+### Send 中の SPA navigation
+
+resolve には generation guard がありますが send loop には同等の cancellation guard がありません。
+
+### ABDM ambiguous POST result
+
+ABDM 側で task 作成済みでも response を受け取れない場合、manual Retry Failed で duplicate になる可能性があります。
+
+### Log rotation
+
+2 MiB 判定は Helper 起動時です。
+
+### Default folder + structure
+
+Save root が空の場合、ABDM の unknown default folder に relative subfolder だけを確実に追加する API contract は確認できません。
+
+---
+
+## 13. Crash / restart recovery
+
+### Helper restart
+
+失うもの:
+
+- resolve cache
+- `resolve_id`
+- GoFile guest token
 
 残るもの:
 
-- Userscript GM 設定
-- tray の Windows startup 設定
-- ログファイル
+- Userscript GM settings
+- Windows startup setting
+- log file
 
-Userscript が持つ古い `resolve_id` は Helper 再起動後に無効になります。
+### Browser reload
 
-### Browser reload / navigation
+失うもの:
 
-通常の selection、resolve tree、手入力した password digest はページメモリなので永続化されません。Save folder / preset / queue のみ GM storage から復元されます。
+- selection
+- resolved tree
+- hand-entered password state
 
-SPA navigation 中の古い resolve response は generation guard により無視されます。
+残るもの:
+
+- Save folder / preset / queue
 
 ### Tray
 
-tray 自身が起動していれば 3秒間隔で Helper health を確認し、tray が所有する Helper が落ちた場合は再起動します。
+tray が ownership を持つ Helper が死んだ場合は health monitor が restart を試みます。
+
+外部 Helper は kill しません。
 
 ---
 
-## 10. 絶対に弱めない安全条件
-
-次は、この実装で意図的に置かれている安全境界です。便利さのために安易に削除しないでください。
-
-1. **Flask を LAN へ bind しない。** `127.0.0.1` のままにする。
-2. **ABDM 接続先を任意ホスト入力にしない。** 現在は `127.0.0.1:15151` 固定。
-3. **汎用 URL fetch endpoint を追加しない。** GoFile `/d/<id>` または bare content ID だけを受け付ける。
-4. **Userscript の `@connect *` や `unsafeWindow` を安易に追加しない。**
-5. **API marker と JSON guard を弱めない。** localhost もブラウザページから攻撃対象になり得る。
-6. **GoFile の 429 を自動再試行しない。** rate limit 中の request 増幅を防ぐ。
-7. **recursive resolve の直列化と request pacing を理由なく外さない。**
-8. **`canAccess: false` を空フォルダ成功として扱わない。** 部分ツリーも成功としてキャッシュ / 送信しない。
-9. **password 平文・guest token・Cookie・Authorization・direct URL をログへ出さない。**
-10. **password 平文を cache key や永続 storage に保存しない。**
-11. **Userscript へ direct URL / Cookie を返さない。** opaque file key を使う。
-12. **GoFile 由来のファイル名 / 相対パスをサニタイズする。** 一方、ユーザーが明示した save root を勝手に別場所へ変換しない。
-13. **GoFile direct link を任意 host として受け入れない。** HTTPS の `gofile.io` またはその subdomain に限定する。
-14. **ABDM の非公開 / 推測 API を前提にしない。** 公開 REST 仕様と照合する。
-15. **release 時に `VERSION` と Userscript `@version` を分離させない。** 意図的な例外なら CHANGELOG へ明記する。
-
----
-
-## 11. 過去に確認された重要な問題と対策
-
-### v1.0.1 — GoFile rate limit 耐性
-
-症状 / リスク:
-- resolve ごとに guest session を作ったり、recursive resolve が重なると request burst が起きやすい。
-
-対策:
-- Helper process 内で guest token を再利用。
-- resolve を20分 cache。
-- recursive resolve を直列化。
-- 429 は即停止。
-
-### v1.0.2 — 選択 UI の DOM 依存
-
-症状:
-- GoFile DOM の ID 属性差や resolve 前の状態により、選択できないケースがあった。
-
-対策:
-- `data-content-id`, `data-id`, `data-item-id`, `data-uuid` を扱う。
-- provisional selection を導入。
-- `Items` fallback selector を常時利用可能にする。
-
-### v1.0.3 — resolve 失敗後の provisional checkbox 消失
-
-症状:
-- resolve 失敗後、DOM mutation がなければ provisional checkbox が復元されない。
-
-原因:
-- reset 時に自身の checkbox を消し、MutationObserver は自身の変更を除外するため、失敗後に再注入されない経路があった。
-
-修正:
-- `resolveContent()` の `finally` で未解決時に `injectCheckboxes()` を再実行。
-
-### v1.0.3 — Userscript 側 180秒固定 timeout
-
-症状:
-- request pacing のある大きな recursive resolve が180秒を超え得る。
-
-修正:
-- resolve の `gmRequest(..., 0)` で Userscript 側 deadline を外した。
-- Helper 内の個々の HTTP timeout は維持。
-
-### Unreleased — password protected child folders
-
-旧問題として実装計画に記録されていたもの:
-
-- HTTP 200 `status: ok` でも `canAccess: false` を空成功として扱う可能性
-- child folder が parent と別 password の場合の資格情報管理不足
-- password modal を背景クリックで消すと Promise が未完了になる経路
-
-現在の `main` では、それぞれ access envelope 判定、per-folder digest、modal completion guard が実装されています。
-
----
-
-## 12. 現在の既知問題 / コードレビュー上の要注意点
-
-以下は **今回のドキュメント調査でコードから確認したもの**です。今回コード修正は行っていません。実機での再現確認は別途必要です。
-
-### [要検証] send 中に `resolve_expired` が起きた場合、選択が保持されない
-
-`sendSelected()` は `resolve_expired` を受けると `resolveContent()` をデフォルト引数で呼びます。現在の `resetResolution(false)` は `selectedKeys` を消すため、再 resolve 後に元の batch を自動復元・再送しません。
-
-影響:
-- 長時間ページを開いた後の送信で 20分 TTL を跨いだ場合、ユーザーが選択し直す必要が生じる可能性。
-
-### [要検証] send 中の SPA navigation は古い batch を停止しない
-
-navigation 時の `invalidateResolve()` は resolve generation を無効化しますが、進行中 `sendSelected()` の for-loop には navigation generation / abort guard がありません。
-
-影響:
-- 送信途中に別 GoFile URL へ SPA 遷移した場合、旧ページの残りタスク登録が続く可能性。
-
-### [要検証] ABDM POST の結果不明時に手動 Retry Failed すると重複し得る
-
-ABDM への `POST /start-headless-download` は自動再試行しません。これは安全側です。ただし、ネットワーク timeout 等で「ABDM が登録したが Helper が成功 response を受け取れなかった」場合、Userscript は失敗として `Retry Failed` に含めます。
-
-影響:
-- ユーザーが手動 retry すると同じ task が重複登録される可能性。
-
-現状、ABDM 側との idempotency key / 照合 API は利用していません。
-
-### [仕様上の注意] log rotation は Helper 起動時のみ
-
-`helper.log` が2 MiBを超えた瞬間に自動 rotate するのではなく、次の Helper start 時に判定します。
-
----
-
-## 13. デバッグ
+## 14. Debug
 
 ### Helper health
 
@@ -504,137 +505,77 @@ ABDM への `POST /start-headless-download` は自動再試行しません。こ
 http://127.0.0.1:8765/health
 ```
 
-### Windows tray log
+### Logs
 
 ```text
 helper.log
 helper.log.1
 ```
 
-ログへ request body / password / Cookie / token / direct URL を追加しないでください。
-
 ### Browser
 
-- GoFile ページの Developer Tools Console
-- Userscript manager の実行状態 / permission
-- `127.0.0.1` への GM request permission
+- DevTools Console
+- Network
+- Userscript manager permission
+- toolbar status / progress
 
-### ABDM
+問題報告時に共有してよいもの:
 
-- ABDM 自体が起動しているか
-- `127.0.0.1:15151` の REST API が利用可能か
-- Settings で queue 一覧が取得できるか
+- error code
+- HTTP status
+- operation step
+- OS / Python / browser / Userscript manager / ABDM version
 
-### 問題報告時に欲しい情報
+共有してはいけないもの:
 
-秘密情報を除外したうえで、次を集めると切り分けしやすくなります。
-
-- OS / Python version
-- Userscript manager と version
-- ABDM version
-- `VERSION` と Git commit SHA
-- 問題発生操作（Load / Send / Send Flat / Retry Failed 等）
-- Helper の error code / HTTP status
-- `helper.log` の該当時刻付近（秘密情報を再確認してから共有）
-- GoFile の content ID は必要性を確認してから共有し、private share URL や password は公開 Issue に貼らない
-
----
-
-## 14. 開発環境とテスト
-
-Python dependencies:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-Python test:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Userscript Node test:
-
-```bash
-node --test tests/test_userscript.cjs
-```
-
-Syntax check:
-
-```bash
-python -m py_compile app.py gofile.py abdm.py tray.py
-node --check gofile-abdm.user.js
-```
-
-`tray.py` は Windows 固有 API を import するため、非 Windows での扱いには注意してください。
-
-### 現在 CI はない
-
-`.github/workflows/` は存在しません。したがって、PR / push 時にテストが自動実行される前提で作業しないでください。
+- password
+- Cookie
+- Authorization
+- guest token
+- Website Token
+- signed/direct URL
+- private share URL
 
 ---
 
-## 15. リリース前チェックリスト
+## 15. Release 前チェック
 
-詳細は [`docs/RELEASE.md`](docs/RELEASE.md) を参照してください。
+詳細は [`docs/RELEASE.md`](docs/RELEASE.md)。
 
 最低限:
 
-- [ ] `VERSION` と Userscript `@version` を確認
-- [ ] `CHANGELOG.md` を更新
+- [ ] `VERSION` と Userscript `@version` が一致
+- [ ] CHANGELOG に release entry
 - [ ] Python tests
-- [ ] Node Userscript tests
-- [ ] Python / JS syntax check
-- [ ] README / DEVELOPMENT / docs を現行コードと再照合
-- [ ] localhost bind / API marker / URL validation / path sanitization を弱めていない
-- [ ] 429 の即停止を維持
-- [ ] password / token / Cookie / direct URL をログ・docs・test fixture に混入させていない
-- [ ] 実機 smoke test の実施範囲を記録
-- [ ] Tag / Release の作成方針を確認
+- [ ] Userscript Node tests
+- [ ] Python syntax check
+- [ ] Userscript syntax check
+- [ ] README / DEVELOPMENT / docs sync
+- [ ] secrets が混入していない
+- [ ] security invariants を維持
+- [ ] tag が release commit を指す
+- [ ] GitHub Release title / note / tag が一致
 
 ---
 
 ## 16. 今後の開発ルール
 
-### 開始時
+開発開始時:
 
-1. `README.md`
-2. `DEVELOPMENT.md`
-3. `CHANGELOG.md`
-4. `docs/ARCHITECTURE.md`
-5. 最新コード
+1. README
+2. DEVELOPMENT
+3. CHANGELOG
+4. latest code
 
-を確認する。
+開発終了時:
 
-### 終了時
-
-1. コード
+1. code
 2. tests
 3. README
 4. DEVELOPMENT
 5. CHANGELOG
-6. 必要な `docs/*`
+6. 必要な docs
 
-を同期する。
+を同期します。
 
-### 変更を避けるべきやり方
-
-- ドキュメントへ合わせるために動いているコードを勝手に変える
-- 実機未確認を「確認済み」と書く
-- GoFile / ABDM の非公開仕様を推測で確定事項にする
-- security boundary を「ローカルだから不要」と削除する
-- rate limit 対策を速度だけを理由に解除する
-- password / token / Cookie をデバッグ出力へ足す
-- `main` の Unreleased と stable tag を混同する
-
----
-
-## 17. 関連資料
-
-- [`README.md`](README.md) — 利用者向けの主要文書
-- [`CHANGELOG.md`](CHANGELOG.md) — バージョン履歴 / Unreleased
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — コンポーネント / trust boundary / data flow
-- [`docs/RELEASE.md`](docs/RELEASE.md) — リリース手順と現状
-- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 詳細な問題切り分け
-- `docs/Password-Protected-Folders-Luna-Implementation-Plan.md` — パスワード対応実装前の調査・計画資料。現在は実装済み内容を含むため、**現行仕様の正本としては使わない**
+新しい API / state / credential / destructive behavior / persistence を追加する場合は、実装だけでなく trust boundary と failure recovery も更新してください。
