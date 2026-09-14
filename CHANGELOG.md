@@ -6,7 +6,12 @@
 
 ## [Unreleased]
 
-現在、`v1.0.0` より後の未リリース変更はありません。
+### Documentation
+
+- `README.md` のインストール手順を、GitHub Release の `Source code (zip)` から始める初見ユーザー向けの流れへ補強。
+- Python version 確認、Userscript の導入方法、正常導入の確認手順を追加。
+- `DEVELOPMENT.md` / `docs/RELEASE.md` を、`v1.0.0` が 2026-09-14 に公開済みである現在の状態へ同期。
+- `v1.0.0` は custom binary asset なしで、GitHub が自動生成する source archive を配布物として利用する方針を明記。
 
 ## [1.0.0] - 2026-09-14
 
