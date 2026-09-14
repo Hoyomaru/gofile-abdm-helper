@@ -1,77 +1,94 @@
 # 変更履歴
 
-このプロジェクトの主な変更点をこのファイルに記録します。
+このプロジェクトの正式な公開リリース履歴を記録します。
+
+開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、Tag / GitHub Release の公開履歴はいったん整理し、**現在の `main` を最初の正式リリース `v1.0.0` として公開**します。
+
+過去の commit / PR 名は開発履歴として残りますが、この CHANGELOG の正式リリース履歴は `v1.0.0` から開始します。
 
 ## [Unreleased]
 
-### 追加
+現在、`v1.0.0` より後の未リリース変更はありません。
 
-- パスワード保護されたフォルダツリーについて、フォルダ単位の SHA-256 digest、親資格情報の継承、challenge path、同一 root からの再試行に対応。
-- Helper の `password_hashes` 入力を検証し、credential map 全体によって resolve cache を分離するよう変更。
-- HTTP 200 の envelope でも `canAccess: false` を空の成功ツリーとして扱わず、password challenge / access denied として分類する処理を追加。
-- Userscript に resolve generation guard、1操作内の password retry state、GoFile `sessionStorage` の一度限りの補助利用を追加。
-- password modal の Cancel、背景クリック、Escape、modal replacement、SPA navigation で Promise が未完了のまま残らない処理を追加。
-- access envelope、credential inheritance、cache separation、stale response、storage assistance、password modal completion を対象に Python / Node regression tests を追加。
+## [1.0.0] - 2026-09-14
 
-### ドキュメント
+初回正式リリース。
 
-- `DEVELOPMENT.md` を追加し、現在の状態、主要コード、状態遷移、API、永続化、retry、復旧、安全条件、過去バグ、既知問題、開発ルールを整理。
-- `docs/ARCHITECTURE.md` を追加し、component、trust boundary、resolve/send data flow、cache / lock、path model を整理。
-- `docs/RELEASE.md` を追加し、現在の tag / GitHub Release / CI 状況と今後の標準 release 手順を分離して記録。
-- `docs/TROUBLESHOOTING.md` を追加し、代表的な障害の症状・原因候補・確認・対処を整理。
-- `README.md` を利用者向け主要文書として再整理し、更新、アンインストール、診断、developer docs、stable と `main` の差、既知制限を明記。
+### Added
 
-### 注記
+- Violentmonkey / Tampermonkey Userscript による GoFile ページ統合。
+- file / folder 選択と recursive folder resolve。
+- GoFile の表示行に対する checkbox 統合。
+- DOM row matching ができない場合の **Items** fallback selector。
+- Helper resolve 前や一時失敗中にも選択できる provisional selection。
+- **Send to ABDM** による folder structure 保持モード。
+- **Send Flat** による flat download task 登録。
+- Save folder、Save preset、ABDM queue 選択。
+- file 単位の送信結果と **Retry Failed**。
+- GoFile guest account / guest token の再利用。
+- dynamic `X-Website-Token` 生成。
+- UUID を含む GoFile content ID 対応。
+- root / child folder の password challenge 対応。
+- folder ごとの SHA-256 password digest と parent credential 継承。
+- GoFile `sessionStorage` の password digest を一度だけ補助候補として利用する経路。
+- password modal の Cancel / Escape / 背景 click / modal replacement / SPA navigation の安全な終了処理。
+- password challenge / access denied の対象 folder context 返却。
+- GoFile content pagination。
+- 20分の resolved-content cache。
+- credential map 全体を含めた cache separation。
+- recursive resolve の process 内直列化。
+- GoFile content request のデフォルト 0.75 秒 pacing。
+- Windows system tray launcher。
+- Helper process health monitoring / restart。
+- user-level **Start with Windows**。
+- `helper.log` / `helper.log.1`。
 
-- これらの機能変更はまだ正式 release ではありません。`VERSION` と Userscript `@version` は `1.0.3` のままです。
-- 2026-09-14 の repository 調査時点で、Git tag は `v1.0.0` と `v1.0.3`、GitHub Releases は0件、GitHub Actions / `.github/` は未導入であることを確認しました。
+### Changed
 
-## [1.0.3] - 2026-09-08
+- GoFile HTTP/API rate limit は blind retry せず、その resolve を即停止する方針へ統一。
+- HTTP 200 でも `canAccess: false` を空の成功 tree として扱わず、password challenge / access denied として分類。
+- GoFile row matching は `data-content-id`, `data-id`, `data-item-id`, `data-uuid` を優先し、link / filename fallback を使用。
+- recursive resolve に Userscript 側の固定 180 秒 deadline を設けず、Helper 側の個別 HTTP timeout を使用。
+- direct download URL / Cookie を Userscript へ返さず、opaque file key を介して Helper memory 内で保持。
 
-レビューで確認された回帰問題の修正。
+### Fixed
 
-### 修正
+- resolve 失敗後に provisional checkbox が消えたままになる回帰を修正。
+- 大規模 recursive resolve が Userscript 側の固定 timeout だけで失敗する問題を修正。
+- password prompt を背景 click などで閉じた際に Promise / resolving state が残り得る問題を修正。
+- stale resolve response が SPA navigation 後の新しい page state を上書きしないよう generation guard を追加。
+- password-protected folder が `status: ok` / `canAccess: false` の場合に空 folder 成功扱いになる問題を修正。
 
-- GoFile の resolve が失敗した場合、ページ DOM がその後変化しないケースを含め、暫定選択用の行チェックボックスを復元するよう修正。
-- Helper 側の各 GoFile API リクエストのタイムアウトは維持しつつ、再帰 resolve リクエストに設定されていた Userscript 側の固定 180 秒期限を削除。
-- 242 件の待機付き content リクエスト（180.75 秒）、resolve 失敗時のチェックボックス復元、Userscript 側期限なしの再帰 resolve に対する回帰テストを追加。
+### Security
 
-## [1.0.2] - 2026-09-06
+- Flask Helper は `127.0.0.1` のみに bind。
+- ABDM 接続先は `127.0.0.1:15151` に固定。
+- `/api/*` は `X-GoFile-ABDM: 1` marker を要求。
+- mutation request は JSON を要求。
+- GoFile URL / content ID を検証し、generic URL proxy を提供しない。
+- GoFile direct download URL は HTTPS + `gofile.io` / subdomain のみ許可。
+- GoFile 由来 path segment を sanitize。
+- Userscript は `@connect *` / `unsafeWindow` を使用しない。
+- password、guest token、Website Token、Cookie、Authorization header、一時 direct URL を意図的に log しない。
 
-選択処理とレート制限耐性の改善。
+### Tests
 
-### 修正
+- Python regression tests: `tests/test_core.py`
+- Userscript Node tests: `tests/test_userscript.cjs`
+- path safety、ABDM payload、queue、recursive resolve、rate-limit、cache、password challenge、credential inheritance、stale response、modal completion 等を対象に test を用意。
 
-- 既存の ID 属性に加えて `data-item-id` と `data-uuid` にも対応するよう GoFile 行マッチングを拡張。
-- 現在のフォルダを検出するとき、ファイル名テキスト一致へフォールバックする前に、表示中の content ID を優先するよう変更。
-- GoFile の DOM 行マッチングが変化しても選択機能を使えるよう、**Items** フォールバックセレクターを常時表示するよう変更。
-- 現在階層の検出結果が空の場合、**Select All** が何もせず終了するのではなく、解決済みルート直下の要素へフォールバックするよう修正。
-- Helper の resolve 成功前でも、表示中の GoFile 行を暫定的に選択できるよう変更。後の resolve 成功時に、それらの content ID を解決済みツリーと照合。
-- API へのバーストを抑えつつ 429 では即停止する挙動を維持するため、再帰的な GoFile content リクエストをデフォルト 0.75 秒間隔に変更。
+### Documentation
 
-## [1.0.1] - 2026-09-05
+- `README.md`: 利用者向け導入・使用・設定・復旧・セキュリティ・制限。
+- `DEVELOPMENT.md`: 開発・保守・AI 引き継ぎ用の詳細資料。
+- `docs/ARCHITECTURE.md`: component / trust boundary / data flow。
+- `docs/RELEASE.md`: release 手順。
+- `docs/TROUBLESHOOTING.md`: 詳細な障害切り分け。
 
-レート制限対策の更新。
+### Known limitations
 
-### 修正
-
-- Python Helper の稼働中は 1 つの GoFile ゲストセッション／トークンを再利用するよう変更。
-- 解決済み GoFile コンテンツを content ID とパスワードダイジェスト単位で 20 分間キャッシュし、同一ページの再 resolve では GoFile API リクエストを 0 件にできるよう変更。
-- GoFile の HTTP/API レート制限レスポンスを再試行せず、即座に停止するよう変更。
-- 再帰的な GoFile resolve を直列化し、resolve リクエストが重なってバーストしないよう修正。
-
-## [1.0.0] - 2026-09-05
-
-初回安定版リリース。
-
-### 機能
-
-- Violentmonkey/Tampermonkey Userscript による GoFile ページ統合。
-- ファイル／フォルダ選択と、フォルダの再帰解決。
-- GoFile ゲストアクセス、動的 Website Token 処理、パスワード保護コンテンツ、UUID content ID、レート制限時のリトライ。
-- 文書化済み localhost REST API を使った AB Download Manager へのタスク登録。
-- フォルダ階層保持モードと Flat 送信モード。
-- 保存先フォルダのプリセットと ABDM キュー選択。
-- ファイル単位の送信結果と Retry Failed。
-- ユーザー単位のログイン時自動起動に対応した Windows システムトレイランチャー。
-- localhost 専用ヘルパー、パスのサニタイズ、SSRF 制限、秘密情報を安全に扱うログ動作。
+- `resolve_id` expiry 後の自動再 resolve では、元 selection の保持と自動再送を保証していません。
+- send 中の SPA navigation では旧 page の残り task 登録が続く可能性があります。
+- ABDM POST の結果が network 上不明な場合、手動 Retry Failed により重複 task になる可能性があります。
+- `helper.log` rotation は Helper 起動時判定です。
+- Save folder が空の structure mode では、ABDM の unknown default folder に relative subfolder だけを確実に追加できません。
