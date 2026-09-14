@@ -1,9 +1,8 @@
 # アーキテクチャ
 
-この文書は GoFile ABDM Helper の内部構造、trust boundary、データフローをまとめます。関数単位の詳細、既知問題、開発ルールは [`../DEVELOPMENT.md`](../DEVELOPMENT.md) を参照してください。
+GoFile ABDM Helper `v1.0.0` の内部構造、trust boundary、データフローをまとめます。関数単位の詳細、既知問題、開発ルールは [`../DEVELOPMENT.md`](../DEVELOPMENT.md) を参照してください。
 
-調査基準日: **2026-09-14**  
-調査時 `main` HEAD: `8359b5fb2d09d0919aedcdc72418994441126c3a`
+基準日: **2026-09-14**
 
 ---
 
@@ -21,14 +20,14 @@ flowchart LR
     T[Windows Tray\ntray.py] -->|process supervision| H
 ```
 
-### コンポーネントの境界
+### Component boundary
 
-- **GoFile Web UI**: 第三者サービス。DOM は将来変化し得る。
-- **Userscript**: ブラウザ上の UI / 選択 /設定 / localhost 通信を担当。
-- **Flask Helper**: ブラウザと GoFile / ABDM の間に置く localhost 専用 broker。
-- **GoFileClient**: GoFile API の認証相当処理と再帰解決。
-- **ABDMClient**: 公開 REST API による queue 取得 / task 登録。
-- **Windows Tray**: Helper の起動監視のみ。業務ロジックを持たない。
+- **GoFile Web UI**: third-party service。DOM / API は将来変化し得る。
+- **Userscript**: browser UI、selection、settings、password prompt、localhost communication。
+- **Flask Helper**: browser と GoFile / ABDM の間に置く localhost-only broker。
+- **GoFileClient**: guest session、Website Token、recursive resolve、path safety。
+- **ABDMClient**: ABDM queue 取得 / task registration。
+- **Windows Tray**: Helper process lifecycle / startup / log。business logic は持たない。
 
 ---
 
@@ -36,7 +35,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph Browser[Browser process]
+    subgraph Browser[Browser]
       G[GoFile page]
       S[Userscript]
     end
@@ -44,7 +43,7 @@ flowchart TB
     subgraph Localhost[User machine / loopback]
       H[Flask Helper :8765]
       D[ABDM :15151]
-      T[Tray process]
+      T[Tray]
     end
 
     subgraph Internet[External]
@@ -60,20 +59,21 @@ flowchart TB
     T --> H
 ```
 
-重要な設計判断:
+守るべき境界:
 
-1. Helper は `127.0.0.1` のみに bind する。
-2. ABDM も `127.0.0.1:15151` 固定で、ユーザー入力の任意 host へ proxy しない。
-3. Userscript から Helper への `/api/*` は `X-GoFile-ABDM: 1` marker を要求する。
-4. GoFile 入力は bare content ID または `https://gofile.io/d/<id>` に限定する。
-5. 解決後の download URL は HTTPS かつ `gofile.io` / subdomain であることを検証する。
-6. direct URL、Cookie、guest token は Userscript へ渡さず、Helper の memory 内に閉じる。
+1. Helper は `127.0.0.1` のみに bind。
+2. ABDM は `127.0.0.1:15151` 固定。
+3. `/api/*` は `X-GoFile-ABDM: 1` marker を要求。
+4. mutation request は JSON を要求。
+5. GoFile input は bare content ID または `https://gofile.io/d/<id>` に限定。
+6. download URL は HTTPS + `gofile.io` / subdomain のみ許可。
+7. direct URL / Cookie / guest token は Userscript へ返さず Helper memory に閉じる。
 
-localhost は「無条件に安全」ではありません。Web page から localhost service を狙えるため、この境界は維持してください。
+localhost は無条件に信頼できる境界ではないため、CORS 拡大・LAN bind・generic proxy 化を行わないでください。
 
 ---
 
-## 3. Resolve データフロー
+## 3. Resolve data flow
 
 ```mermaid
 sequenceDiagram
@@ -83,28 +83,28 @@ sequenceDiagram
     participant G as GoFileClient
     participant A as api.gofile.io
 
-    U->>S: GoFile page / Load
+    U->>S: Open share / Load
     S->>H: POST /api/gofile/resolve
     H->>H: validate + source cache lookup
     alt cache miss
       H->>H: acquire _resolve_lock
       H->>G: resolve(content_id, password_hashes)
-      G->>A: POST /accounts (guest token, when needed)
+      G->>A: POST /accounts when guest token needed
       loop folders/pages
         G->>A: GET /contents/<id>
-        A-->>G: folder metadata / access state
+        A-->>G: metadata / access state
       end
       G-->>H: ResolveResult
       H->>H: source cache put
     end
     H->>H: issue opaque resolve_id
     H-->>S: public tree + opaque file keys
-    S-->>U: checkbox / tree / stats
+    S-->>U: selection UI / stats
 ```
 
-### パスワード challenge
+### Password challenge
 
-途中 folder が `password_required` / `wrong_password` になった場合、部分ツリーを成功として返しません。
+途中 folder が `password_required` / `wrong_password` になった場合、部分 tree を成功扱いしません。
 
 ```mermaid
 sequenceDiagram
@@ -121,11 +121,17 @@ sequenceDiagram
     S->>H: resolve(same root, updated digest map)
 ```
 
-各 folder の credential は「明示指定 digest → 親から継承」の順で選ばれます。
+credential priority:
+
+```text
+explicit digest for folder
+        ↓ fallback
+inherited parent digest
+```
 
 ---
 
-## 4. Send データフロー
+## 4. Send data flow
 
 ```mermaid
 sequenceDiagram
@@ -137,46 +143,42 @@ sequenceDiagram
     S->>H: GET /api/abdm/status
     H->>A: queues()
     A->>D: GET /queues
-    D-->>A: queues
-    A-->>H: connected
-    H-->>S: connected=true
+    D-->>S: connected via Helper
 
-    loop selected files (normally one request per file)
+    loop selected files
       S->>H: POST /api/abdm/send(resolve_id, file_key)
       H->>H: resolve opaque key to ResolvedFile
       H->>A: send(...)
       A->>D: POST /start-headless-download
       D-->>A: HTTP result
-      A-->>H: result
+      A-->>H: normalized result
       H-->>S: per-file result
     end
 ```
 
-ABDM へ渡す `downloadSource.headers` には GoFile download 用 Cookie / User-Agent / Referer が含まれ得ます。これは ABDM へファイルを取得させるために必要ですが、ログや Userscript UI へ露出させません。
+ABDM へ渡す `downloadSource.headers` には GoFile download 用 Cookie / User-Agent / Referer が含まれ得ます。これは ABDM へ file を取得させるために必要ですが、log / Userscript UI へ露出させません。
 
 ---
 
-## 5. データモデル
+## 5. Data model
 
 ### `ResolvedFile`
 
-Helper 内部だけで使用します。
-
-主なフィールド:
+Helper internal only:
 
 - opaque `key`
 - GoFile `id`
 - original `name`
 - sanitized `safe_name`
 - `size`
-- sanitized target 用 `relative_folder`, `relative_path`
-- GoFile `link`
+- `relative_folder`, `relative_path`
+- direct `link`
 - download `headers`
 - `download_page`
 
 ### `ResolvedNode`
 
-Userscript へ公開可能な tree model です。
+Userscript へ公開可能な tree model:
 
 - file / folder
 - ID / key / name
@@ -189,21 +191,22 @@ Userscript へ公開可能な tree model です。
 
 ### `ResolveResult`
 
-- root content ID
-- root name
-- root tree
-- `file_key -> ResolvedFile` map
+```text
+content_id
+root_name
+root tree
+file_key -> ResolvedFile map
+```
 
-Userscript から送信される file key を Helper 内部情報へ再結合する境界になります。
+Userscript の opaque file key を Helper internal information へ再結合する境界です。
 
 ---
 
-## 6. キャッシュと排他
+## 6. Cache / lock
 
 ### `_source_cache`
 
-目的:
-- 同じ content tree を短時間に GoFile API へ再取得することを避ける。
+同じ content tree を短時間に GoFile API へ再取得することを避けます。
 
 key:
 
@@ -211,22 +214,21 @@ key:
 (root content ID, SHA-256(canonical credential map))
 ```
 
-credential map は content ID 順で正規化し、digest を小文字化したうえでさらに SHA-256 します。平文 password を key に保存しません。
+TTL: 20 minutes。
 
-TTL: 20分。
+plaintext password を cache key に保存しません。
 
 ### `_cache`
 
-目的:
-- Userscript の opaque `resolve_id` を Helper 内の `ResolveResult` へ対応させる。
+opaque `resolve_id` → `ResolveResult`。
 
-TTL: 20分。
+TTL: 20 minutes。
 
 ### `_resolve_lock`
 
-recursive GoFile resolve を Helper process 内で1本に直列化します。
+recursive resolve を Helper process 内で1本に serialize します。
 
-lock 待ち後に source cache を再確認するため、同一 resolve が重なった場合、後続 request は不要な GoFile API access を避けられます。
+lock 待ち後に source cache を再確認するため、同一 resolve の重複 API access を抑えます。
 
 ---
 
@@ -234,58 +236,62 @@ lock 待ち後に source cache を再確認するため、同一 resolve が重�
 
 ### Guest account
 
-`POST https://api.gofile.io/accounts`
+```text
+POST https://api.gofile.io/accounts
+```
 
-成功 token は同じ Helper process の `GoFileClient` で再利用します。
+成功 token は同じ Helper process で reuse。
 
 ### Website Token
 
-現在の実装は次の入力を連結し SHA-256 します。
+概念上:
 
 ```text
-User-Agent :: language :: guest token :: 4-hour window :: salt
+SHA-256(User-Agent :: language :: guest-token :: 4-hour-window :: salt)
 ```
 
-`GOFILE_WT_SALT`, `GOFILE_USER_AGENT`, `GOFILE_LANGUAGE` で上書き可能です。
+override:
+
+- `GOFILE_WT_SALT`
+- `GOFILE_USER_AGENT`
+- `GOFILE_LANGUAGE`
 
 ### Folder API
 
-`GET https://api.gofile.io/contents/<id>`
+```text
+GET https://api.gofile.io/contents/<id>
+```
 
-- page size: 1000
-- pagination 対応
-- password digest を query parameter `password` に渡す経路あり
-- HTTP 429 は JSON parse 前に検出
-- `status: ok` でも `data.canAccess is False` は成功扱いしない
+- page size 1000
+- pagination
+- password digest query path
+- HTTP 429 は JSON parse 前に detect
+- `status: ok` でも `canAccess: false` は success にしない
 
-### Request pacing
+### Pacing
 
-デフォルト 0.75秒。
+デフォルト 0.75 sec。
 
-rate limit が出た場合に retry して request を増幅させるのではなく、その resolve を止めます。
+rate limit は blind retry せず current resolve を stop。
 
 ---
 
 ## 8. Path model
 
-GoFile 由来の path segment は `sanitize_segment()` を通します。
+GoFile-derived path segment は `sanitize_segment()` を通します。
 
-対象例:
+対象:
 
 - `/`, `\`
 - `:*?"<>|`
-- NUL / control chars
+- NUL / control characters
 - `.` / `..`
-- Windows reserved names (`CON`, `NUL`, `COM1` 等)
-- 末尾の dot / space
+- Windows reserved names
+- trailing dot / space
 
-segment は最大240文字です。
-
-一方、ユーザー指定 `save_root` は ABDM 向けに separator を `/` へ正規化し、末尾 separator を落とす程度で、別の directory へ勝手に書き換えません。
+user-selected `save_root` は ABDM 向け separator normalization 以上に勝手に変換しません。
 
 ### Structure mode
-
-`preserve_structure=true`:
 
 ```text
 <save_root>/<sanitized GoFile relative folder>
@@ -293,107 +299,100 @@ segment は最大240文字です。
 
 ### Flat mode
 
-`preserve_structure=false`:
-
 ```text
 <save_root>
 ```
 
-`save_root` が空なら `folder` field 自体を ABDM へ送りません。
-
-このため、ABDM の未知の default folder に相対 subfolder だけを確実に追加する機能は現在ありません。
+`save_root` empty の場合は `folder` field を ABDM へ送りません。
 
 ---
 
-## 9. Browser DOM 統合
+## 9. Browser DOM integration
 
-Userscript は GoFile の単一 class 名へ固定依存しないようにしています。
-
-優先して見る ID 属性:
+priority:
 
 - `data-content-id`
 - `data-id`
 - `data-item-id`
 - `data-uuid`
+- link content ID
+- conservative filename text match
 
-その後 link 内の content ID、最後に保守的な表示名一致へ fallback します。
+`Items` modal は DOM mapping が壊れても resolved tree から直接選択できる fallback です。
 
-さらに `Items` modal は DOM row mapping が壊れても解決済み tree から直接選択できる fallback です。
-
-Helper resolve が失敗している間も、DOM に content ID が見えていれば provisional selection を保持できます。
+resolve failure 中も DOM に content ID があれば provisional selection を保持できます。
 
 ---
 
-## 10. Windows Tray の位置づけ
+## 10. Windows Tray
 
-`tray.py` は Windows 専用です。
+`tray.py` は Windows only。
 
 責務:
 
-- single instance mutex
+- single-instance mutex
 - Helper health check
-- Helper process start / restart / stop
-- `helper.log` への stdout/stderr redirect
-- user-level Windows startup registration
+- Helper start / restart / stop
+- stdout/stderr → `helper.log`
+- current-user startup registration
 - tray menu
 
-Flask logic、GoFile resolve、ABDM send logicは持ちません。
-
-外部からすでに port 8765 の Helper が稼働している場合は `Running (external)` と表示し、その process を tray から kill しません。
+external Helper が port 8765 で稼働している場合は `Running (external)` とし、その process を kill しません。
 
 ---
 
 ## 11. Failure boundary
 
-### GoFile failure
+### GoFile
 
-- invalid input → resolve 開始前に reject
-- 429 → 即停止
-- password challenge → target context を返し、部分 tree は使わない
+- invalid input → pre-resolve reject
+- 429 → immediate stop
+- password challenge → target context + full resolve retry
+- access denied → stop
 - generic upstream error → 502
-- unexpected error → 500、秘密情報を detail に入れない
+- unexpected error → 500 without secret details
 
-### ABDM failure
+### ABDM
 
-1 file の失敗が残りの file registration を止めない設計です。
+1 file failure で remaining files を止めません。
 
-ただし `POST /start-headless-download` の結果が network 上不明になった場合、現在 idempotency 判定はありません。自動 retry はしませんが、ユーザーが `Retry Failed` を選ぶと重複 task の可能性があります。
+一方、`POST /start-headless-download` が ABDM 側で成功したあと response だけ失われた場合、現在 idempotency check はありません。automatic blind retry はしませんが、manual `Retry Failed` では duplicate task の可能性があります。
 
 ### Browser navigation
 
-resolve は generation guard で stale response を捨てます。
+resolve response は generation guard で stale state を破棄します。
 
-一方、進行中の send loop は同じ generation guard を持たないため、navigation 中送信については [`../DEVELOPMENT.md`](../DEVELOPMENT.md) の既知問題を確認してください。
+send loop には同等の navigation cancellation guard がないため、send 中 navigation は [`../DEVELOPMENT.md`](../DEVELOPMENT.md) の known issue を参照してください。
 
 ---
 
-## 12. 設計上「追加していない」もの
+## 12. Intentionally not implemented
 
-現在のアーキテクチャは小さな localhost bridge を維持することを優先しており、次を持ちません。
-
-- DB
+- database
 - Redis / Celery
-- server-side persistent queue
+- persistent server queue
 - Docker
 - Flask HTML UI
-- direct file streaming / Python downloader
+- Python direct downloader / streaming
 - multi-user auth
 - LAN server mode
 - Premium account token UI
 - generic URL downloader
 
-これらを追加する場合は、「便利だから」ではなく trust boundary、credential lifecycle、crash recovery、migration を含めて設計を見直してください。
+追加する場合は credential lifecycle、trust boundary、crash recovery、migration を含めて再設計してください。
 
 ---
 
-## 13. 正本の優先順位
+## 13. Source of truth
 
-仕様が食い違って見える場合は、次の順に確認してください。
+仕様確認の優先順位:
 
-1. 現在の `main` の実装
-2. 現在の tests
-3. `CHANGELOG.md` の `[Unreleased]`
-4. `README.md` / `DEVELOPMENT.md` / この文書
-5. 過去の実装計画・PR 説明
+1. current `main` implementation
+2. current tests
+3. `CHANGELOG.md`
+4. `README.md`
+5. `DEVELOPMENT.md`
+6. this architecture document
+7. historical commits / PR descriptions
 
-`Password-Protected-Folders-Luna-Implementation-Plan.md` は実装前の調査・計画資料を含むため、現在の API / behavior を確認する一次資料としては使わないでください。
+実装済み機能の旧計画書は repository から削除済みです。現在仕様を確認するときは、過去の計画資料ではなく code / tests / current documentation を使用してください。
