@@ -6,20 +6,32 @@
 
 ---
 
-## 1. 現在のリリース方針
+## 1. 現在の公開状況
 
-正式な公開リリース体系は **`v1.0.0` から開始**します。
+正式な公開リリース体系は **`v1.0.0` から開始**しています。
 
-現在の `main` に含まれる完成状態を、最初の正式公開版 `v1.0.0` としてリリースします。
+`v1.0.0` は **2026-09-14 に公開済み**の初回正式リリースです。
 
-現在の release metadata:
+現在確認できる release metadata:
 
 ```text
-VERSION: 1.0.0
-Git tag target: v1.0.0
-GitHub Release target: v1.0.0
-Release date: 2026-09-14
+VERSION:             1.0.0
+Userscript @version: 1.0.0
+Git tag:             v1.0.0
+Tag target commit:   e4fcf3a2ce0cee18f9320a9ff5df683acf78912a
+GitHub Release:      v1.0.0
+Release title:       GoFile ABDM Helper v1.0.0
+Release date:        2026-09-14
+Draft:               false
+Prerelease:          false
+Custom assets:       なし
 ```
+
+GitHub Release:
+
+https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.0.0
+
+`v1.0.0` tag は公開時点の snapshot を指します。公開後に `main` へ追加された documentation-only change は `[Unreleased]` として扱い、**既存の `v1.0.0` tag を移動しません**。
 
 GitHub Actions / CI は未導入です。
 
@@ -27,9 +39,14 @@ GitHub Actions / CI は未導入です。
 
 ## 2. 配布単位
 
-専用 installer、wheel、exe、Docker image、build archive の自動生成工程はありません。
+専用 installer、wheel、exe、Docker image、独自 build archive の自動生成工程はありません。
 
-主な配布物は source tree です。
+`v1.0.0` では GitHub Release に custom asset を追加していません。GitHub が release tag から自動生成する次の source archive を配布物として利用できます。
+
+- `Source code (zip)`
+- `Source code (tar.gz)`
+
+主な source tree:
 
 - `gofile-abdm.user.js`
 - `app.py`
@@ -42,9 +59,11 @@ GitHub Actions / CI は未導入です。
 
 Userscript metadata に `@updateURL` / `@downloadURL` はありません。
 
+利用者向けの導入方法は `README.md` を正とします。
+
 ---
 
-## 3. Version 同期
+## 3. Version 同期ルール
 
 正式 release では次を一致させます。
 
@@ -57,31 +76,52 @@ GitHub Release tag/title
 README release version
 ```
 
-`v1.0.0` の期待値:
+`v1.0.0` の公開済み値:
 
 ```text
 VERSION             = 1.0.0
 Userscript @version = 1.0.0
 CHANGELOG           = ## [1.0.0] - 2026-09-14
 Git tag             = v1.0.0
-GitHub Release      = v1.0.0
+GitHub Release tag  = v1.0.0
+GitHub Release title= GoFile ABDM Helper v1.0.0
 ```
 
-一部だけ別 version のまま tag を作成しないでください。
+一部だけ別 version のまま tag / Release を作成しないでください。
 
 ---
 
-## 4. v1.0.0 リリース前チェック
+## 4. v1.0.0 公開記録
+
+`v1.0.0` は次の状態で公開されています。
+
+- 通常 Release
+- draft ではない
+- prerelease ではない
+- tag: `v1.0.0`
+- tag target: `e4fcf3a2ce0cee18f9320a9ff5df683acf78912a`
+- title: `GoFile ABDM Helper v1.0.0`
+- published: `2026-09-14`
+- custom asset: なし
+- GitHub-generated source archive: あり
+
+Release notes には、主な機能、安全設計、既知の制限、README への案内を記載しています。
+
+公開済み Release の実体を確認する場合は GitHub Release ページを参照し、この文書内の古い予定値だけを根拠にしないでください。
+
+---
+
+## 5. 今後のリリース前チェック
 
 ### Source / docs
 
-- [ ] `VERSION` = `1.0.0`
-- [ ] Userscript `@version` = `1.0.0`
-- [ ] `CHANGELOG.md` に `1.0.0` entry
-- [ ] README が `v1.0.0` を初回正式リリースとして説明
+- [ ] `VERSION` と予定 version が一致
+- [ ] Userscript `@version` と予定 version が一致
+- [ ] `CHANGELOG.md` に release entry
+- [ ] README の current release 表記を更新
 - [ ] DEVELOPMENT が現在仕様と一致
-- [ ] ARCHITECTURE / TROUBLESHOOTING に削除済み資料へのリンクがない
-- [ ] 古い公開 Tag を前提にした説明がない
+- [ ] ARCHITECTURE / TROUBLESHOOTING が現在仕様と一致
+- [ ] 古い Tag / Release を前提にした説明が残っていない
 - [ ] secrets / credential が混入していない
 
 ### Python tests
@@ -107,7 +147,7 @@ CI はないため、実行結果は手動で確認します。
 
 ---
 
-## 5. 実機 smoke test
+## 6. 実機 smoke test
 
 可能な範囲で実施し、未実施項目を確認済み扱いにしないでください。
 
@@ -134,7 +174,7 @@ CI はないため、実行結果は手動で確認します。
 
 ---
 
-## 6. Security regression check
+## 7. Security regression check
 
 - [ ] Helper bind は `127.0.0.1`
 - [ ] ABDM target は `127.0.0.1:15151`
@@ -151,99 +191,38 @@ CI はないため、実行結果は手動で確認します。
 
 ---
 
-## 7. v1.0.0 Release title / notes
+## 8. 今後の Tag / GitHub Release 作成
 
-### Title
+release 対象 commit を確定した後、**その commit に** `v<version>` tag を作成します。
 
-```text
-GoFile ABDM Helper v1.0.0 — Initial Release
-```
-
-### Release notes
-
-```markdown
-## GoFile ABDM Helper v1.0.0
-
-GoFile の既存ページから、選択したファイル / フォルダを localhost 専用 Helper 経由で **AB Download Manager (ABDM)** へ登録できる GoFile ABDM Helper の初回正式リリースです。
-
-### 主な機能
-
-- GoFile ページへ Userscript の選択 UI / toolbar を統合
-- file / folder 選択と recursive folder resolve
-- **Send to ABDM** による folder structure 保持
-- **Send Flat** による flat task 登録
-- ABDM queue、Save folder、Save preset の選択
-- file 単位の送信結果と **Retry Failed**
-- DOM row を対応付けられない場合の **Items** fallback selector
-- Helper resolve 前や一時失敗中にも使える provisional selection
-- root / child folder の password challenge
-- parent / child で異なる password と credential inheritance
-- GoFile guest session / dynamic Website Token
-- 20分の resolved-content cache
-- recursive resolve の直列化と request pacing
-- Windows system tray / Helper 自動監視
-- user-level **Start with Windows**
-
-### 安全設計
-
-- Helper は `127.0.0.1` のみに bind
-- ABDM 接続先は `127.0.0.1:15151` に固定
-- generic URL proxy を提供しない
-- GoFile URL / content ID / direct-link host を検証
-- GoFile 由来 path segment を sanitize
-- rate limit 時は blind retry せず現在の resolve を停止
-- password、token、Cookie、Authorization header、一時 direct URL を意図的に log しない
-- direct download URL / Cookie を Userscript へ返さず Helper memory 内で管理
-
-### 既知の制限
-
-- Save folder が空の structure mode では、ABDM の default folder に relative subfolder だけを確実に追加できません。folder structure を確実に保持する場合は Save root を明示してください。
-- `resolve_id` expiry 後の再 resolve では、元 selection の保持と自動再送を保証していません。
-- send 中に GoFile の SPA navigation を行うと、旧ページの残り task 登録が続く可能性があります。
-- ABDM POST の結果が network 上不明な場合、手動 **Retry Failed** により duplicate task になる可能性があります。
-- `helper.log` の rotation は Helper 起動時判定です。
-- Premium / account token 入力、download 進捗 / ETA / pause / resume は実装していません。
-
-### インストール / 使用方法
-
-導入方法、設定、使い方、トラブルシューティングは `README.md` を参照してください。
-
-> このツールは GoFile および AB Download Manager の公式プロジェクトとは無関係の非公式ツールです。
-```
-
-この repository には必須 binary asset はありません。
-
----
-
-## 8. Tag / GitHub Release 作成
-
-release 対象 commit を確定した後、**その commit に** `v1.0.0` tag を作成します。
-
-GitHub Release は同じ `v1.0.0` tag を選びます。
+GitHub Release は同じ tag を選びます。
 
 注意:
 
 - tag を古い commit に付けない
 - docs/version sync 前の commit に tag を付けない
-- 今回は初回正式リリースなので通常 release とする
-- title / notes / tag が同じ version を指すことを確認
+- `VERSION` / Userscript / CHANGELOG / README と tag version を一致させる
+- title / notes / tag が同じ version を指すことを確認する
+- 公開済み tag を、公開後の documentation fix のためだけに移動しない
+
+custom asset が必要になるのは、exe / installer / standalone archive 等を正式な配布物として用意した場合です。source-only release では GitHub-generated source archive だけでも問題ありません。
 
 ---
 
 ## 9. Release 後の確認
 
-- [ ] Git tag `v1.0.0` が期待する commit を指す
-- [ ] GitHub Release が `v1.0.0` tag を使用
-- [ ] GitHub Release title が `GoFile ABDM Helper v1.0.0 — Initial Release`
-- [ ] `VERSION` = `1.0.0`
-- [ ] Userscript `@version` = `1.0.0`
+- [ ] Git tag が期待する release commit を指す
+- [ ] GitHub Release が同じ tag を使用
+- [ ] Release title / notes が予定 version と一致
+- [ ] `VERSION` と Userscript `@version` が一致
 - [ ] CHANGELOG / README が一致
 - [ ] broken link がない
 - [ ] `[Unreleased]` に release 済み内容が重複していない
+- [ ] 公開後に `main` へ追加した変更は `[Unreleased]` に記録
 
 ---
 
-## 10. 今後の release
+## 10. 今後の versioning
 
 `v1.0.0` より後は通常の semantic versioning を前提に version を進めます。
 
@@ -264,6 +243,7 @@ v2.0.0  breaking change
 5. release commit
 6. tag
 7. GitHub Release
+8. release 後の整合性確認
 
 の順を維持してください。
 
