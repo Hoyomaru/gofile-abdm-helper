@@ -4,16 +4,27 @@
 
 ## [Unreleased]
 
-### Added
+### 追加
 
-- Resolve password-protected folder trees with per-folder SHA-256 digests, inherited parent credentials, challenge paths, and same-root retries.
-- Validate the `password_hashes` helper input, separate resolved-content caches by the complete credential map, and reject HTTP 200 access-denied envelopes instead of returning empty success trees.
-- Add Userscript resolve-generation guards, one-operation retry state, one-time GoFile `sessionStorage` assistance, and cancellation-safe password prompts for Cancel, background, Escape, replacement, and SPA navigation.
-- Add Python and Node regression tests for access envelopes, credential inheritance, cache separation, stale responses, storage assistance, and modal Promise completion.
+- パスワード保護されたフォルダツリーについて、フォルダ単位の SHA-256 digest、親資格情報の継承、challenge path、同一 root からの再試行に対応。
+- Helper の `password_hashes` 入力を検証し、credential map 全体によって resolve cache を分離するよう変更。
+- HTTP 200 の envelope でも `canAccess: false` を空の成功ツリーとして扱わず、password challenge / access denied として分類する処理を追加。
+- Userscript に resolve generation guard、1操作内の password retry state、GoFile `sessionStorage` の一度限りの補助利用を追加。
+- password modal の Cancel、背景クリック、Escape、modal replacement、SPA navigation で Promise が未完了のまま残らない処理を追加。
+- access envelope、credential inheritance、cache separation、stale response、storage assistance、password modal completion を対象に Python / Node regression tests を追加。
 
-### Notes
+### ドキュメント
 
-- This feature is not a release; `VERSION` and the Userscript `@version` remain `1.0.3` until the project's release procedure is explicitly run.
+- `DEVELOPMENT.md` を追加し、現在の状態、主要コード、状態遷移、API、永続化、retry、復旧、安全条件、過去バグ、既知問題、開発ルールを整理。
+- `docs/ARCHITECTURE.md` を追加し、component、trust boundary、resolve/send data flow、cache / lock、path model を整理。
+- `docs/RELEASE.md` を追加し、現在の tag / GitHub Release / CI 状況と今後の標準 release 手順を分離して記録。
+- `docs/TROUBLESHOOTING.md` を追加し、代表的な障害の症状・原因候補・確認・対処を整理。
+- `README.md` を利用者向け主要文書として再整理し、更新、アンインストール、診断、developer docs、stable と `main` の差、既知制限を明記。
+
+### 注記
+
+- これらの機能変更はまだ正式 release ではありません。`VERSION` と Userscript `@version` は `1.0.3` のままです。
+- 2026-09-14 の repository 調査時点で、Git tag は `v1.0.0` と `v1.0.3`、GitHub Releases は0件、GitHub Actions / `.github/` は未導入であることを確認しました。
 
 ## [1.0.3] - 2026-09-08
 
