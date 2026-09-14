@@ -1,13 +1,13 @@
 # GoFile ABDM Helper
 
-**安定版:** `v1.0.3`  
-**開発状態:** `main` には `v1.0.3` より後の `[Unreleased]` 変更が含まれています。
+**現在のリリース:** `v1.0.0`  
+**リリース日:** 2026-09-14
 
 GoFile の既存ページに Userscript の UI を追加し、選択したファイル / フォルダを localhost 専用の Python Helper 経由で **AB Download Manager (ABDM)** へ登録する個人利用向けツールです。
 
 > **非公式ツールです。** GoFile および AB Download Manager の公式プロジェクトとは無関係です。
 
-Python 側がファイル本体をダウンロードするわけではありません。GoFile のメタデータと download 情報を解決し、ABDM に download task を登録します。
+Python Helper 自身がファイル本体を保存するわけではありません。GoFile のメタデータと download 情報を解決し、ABDM に download task を登録します。
 
 ```text
 GoFile page
@@ -28,7 +28,9 @@ AB Download Manager (127.0.0.1:15151)
 - GoFile ページへ選択 checkbox / toolbar を追加
 - file / folder 選択
 - folder の recursive resolve
-- resolve 前や rate limit 中でも可能な provisional selection
+- root / child folder の password challenge 対応
+- parent から child への password credential 継承
+- resolve 前や rate limit 中でも使える provisional selection
 - DOM row を対応付けられない場合の **Items** fallback selector
 - **Send to ABDM**: GoFile folder structure を保持して登録
 - **Send Flat**: GoFile folder structure を無視して登録
@@ -37,36 +39,24 @@ AB Download Manager (127.0.0.1:15151)
 - file 単位の送信結果
 - **Retry Failed**
 - GoFile guest session / dynamic Website Token
-- password protected root / child folder の resolve（現在の `main` の `[Unreleased]` を含む）
-- GoFile rate-limit 対策
+- 20分の resolve cache
+- recursive resolve の直列化と request pacing
 - Windows tray / Helper 自動監視
 - Windows user login 時の自動起動
 
 ### このツールが解決する問題
 
-GoFile の Web UI で見えている file / folder を、browser から直接保存する代わりに ABDM の task としてまとめて登録できるようにします。recursive folder、保存先 root、queue、Flat / structure の選択を GoFile page 上で行えます。
-
-### 想定ユーザー
-
-- GoFile の共有 URL を通常の browser で利用している
-- AB Download Manager を local PC で使用している
-- Userscript manager を利用できる
-- localhost の Python Helper を自分で起動できる
+GoFile の Web UI で表示している file / folder を、AB Download Manager の task としてまとめて登録できます。recursive folder、保存先 root、ABDM queue、Flat / structure の選択を GoFile page 上で行えます。
 
 ---
 
-## Stable と `main` の違い
+## v1.0.0 について
 
-`VERSION` と Userscript `@version` は現在どちらも `1.0.3` です。
+`v1.0.0` は、このリポジトリの **最初の正式な公開リリース**として扱います。
 
-一方、現在の `main` には `CHANGELOG.md` の `[Unreleased]` として、`v1.0.3` の後に実装された password-protected child folder 対応が含まれています。
+開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、Tag / GitHub Release の公開履歴はいったん整理し、現在の `main` に入っている機能をまとめて `v1.0.0` として公開します。
 
-したがって:
-
-- **stable release の仕様確認** → tag `v1.0.3`
-- **現在開発中の最新仕様確認** → `main` + `[Unreleased]`
-
-として区別してください。
+過去の commit / PR 名は開発履歴として残しますが、利用者向けの正式リリース履歴は `v1.0.0` から開始します。
 
 ---
 
@@ -92,15 +82,15 @@ Pillow>=10,<13
 ### OS
 
 - **Windows:** tray launcher / Start with Windows を含む主要対象
-- **その他 OS:** `python app.py` で Helper 自体を直接起動するコード構成。tray は Windows 専用
+- **その他 OS:** `python app.py` で Helper を直接起動可能。tray は Windows 専用
 
-Linux/macOS を含む各 OS での最新 `main` の実機確認状況は、このリポジトリだけからは確認できないため **未確認** とします。
+Linux/macOS を含む各 OS での網羅的な実機確認表はありません。
 
-### Browser
+### Browser / Userscript manager
 
-Userscript metadata は `https://gofile.io/*` を対象にしています。
+Userscript metadata は `https://gofile.io/*` を対象にします。
 
-Violentmonkey を主な対象としており、Tampermonkey も想定していますが、各 browser / manager / version の網羅的な動作確認表はありません。
+Violentmonkey を主な対象としており、Tampermonkey も想定しています。
 
 ### AB Download Manager
 
@@ -110,7 +100,7 @@ Violentmonkey を主な対象としており、Tampermonkey も想定してい�
 http://127.0.0.1:15151
 ```
 
-現在使用する公開 REST endpoint:
+使用する REST endpoint:
 
 ```text
 GET  /queues
@@ -142,16 +132,13 @@ project/
 ├─ docs/
 │  ├─ ARCHITECTURE.md
 │  ├─ RELEASE.md
-│  ├─ TROUBLESHOOTING.md
-│  └─ Password-Protected-Folders-Luna-Implementation-Plan.md
+│  └─ TROUBLESHOOTING.md
 └─ tests/
    ├─ test_core.py
    └─ test_userscript.cjs
 ```
 
 `templates/` / `static/` は使用しません。
-
-`docs/Password-Protected-Folders-Luna-Implementation-Plan.md` は password feature **実装前の調査・計画資料**を含みます。現行仕様の正本としては使用せず、現在のコード、`CHANGELOG.md`、`DEVELOPMENT.md` を優先してください。
 
 ---
 
@@ -232,7 +219,7 @@ Violentmonkey / Tampermonkey で新しい Userscript を作成し、`gofile-abdm
 localhost
 ```
 
-`@connect *` / `unsafeWindow` は使用していません。
+`@connect *` / `unsafeWindow` は使用しません。
 
 ## 5. GoFile を開く
 
@@ -361,7 +348,7 @@ Save folder が空の場合、Helper は ABDM の `folder` field を省略しま
 
 # パスワード保護コンテンツ
 
-現在の `main` では root だけでなく child folder の password challenge も扱います。この変更は `CHANGELOG.md` 上 `[Unreleased]` です。
+`v1.0.0` では root と child folder の password challenge を扱います。
 
 動作:
 
@@ -426,178 +413,6 @@ Helper は GoFile API request を増幅させないようにしています。
 
 `GOFILE_REQUEST_INTERVAL` で interval を変更できます。
 
-```bash
-GOFILE_REQUEST_INTERVAL=1.0 python app.py
-```
-
-`0` で pacing を無効化できますが、rate-limit safety を弱める可能性があります。
-
-Helper restart で guest token と memory cache は消えます。
-
----
-
-# Windows tray / ログ
-
-`tray.py` は Windows 専用です。
-
-Helper health を3秒間隔で確認し、tray 自身が管理する Helper が停止した場合は再起動します。
-
-すでに別 process の Helper が動いている場合は `Running (external)` とし、その process を終了しません。
-
-log:
-
-```text
-helper.log
-helper.log.1
-```
-
-`helper.log` が2 MiBを超えている場合、**Helper start 時**に `.1` へ rotate します。
-
-request body、password、Cookie、guest token、Authorization header、direct URL を意図的に log へ出す実装にはしないでください。
-
----
-
-# 更新
-
-## Git clone で管理している場合
-
-Helper / tray を停止し、local modification を確認してから更新します。
-
-例:
-
-```bash
-git pull --ff-only
-python -m pip install -r requirements.txt
-```
-
-その後:
-
-1. Helper / tray を再起動
-2. Userscript manager 内の script を repository の最新 `gofile-abdm.user.js` と同期
-3. `VERSION` / `CHANGELOG.md` を確認
-
-### 注意
-
-Userscript metadata に自動 update URL は設定されていないため、repository 更新だけで browser 内 script が自動的に置き換わる前提にしないでください。
-
-## 手動配置の場合
-
-既存設定を確認したうえで project files を新しい版へ置き換え、`requirements.txt` を再適用し、Userscript 内容も更新します。
-
-release ごとの互換性注意は `CHANGELOG.md` を確認してください。
-
----
-
-# アンインストール
-
-## Windows tray を使用している場合
-
-1. tray の **Start with Windows** を off
-2. tray の **Exit**
-3. Userscript manager から GoFile ABDM Helper を削除
-4. project directory を削除
-
-Start with Windows を off にすると、この app の HKCU Run value を削除します。
-
-## 手動 Helper の場合
-
-1. `python app.py` を停止
-2. Userscript を削除
-3. project directory を削除
-
-### 残る可能性があるもの
-
-- Userscript manager 側の GM storage（削除方法は manager に依存）
-- Python packages（他 project と共有している可能性があるため、この project は自動削除しない）
-- project directory を残す場合 `helper.log` / `helper.log.1`
-
-GoFile password / guest token / resolve cache は Helper / page memory のため、process / page 終了で失われます。
-
----
-
-# 技術仕様
-
-## 使用言語
-
-- Python
-- JavaScript Userscript
-- Windows CMD launcher
-
-## Python libraries
-
-- Flask
-- requests
-- pystray
-- Pillow
-
-## Helper API
-
-```text
-GET  /health
-GET  /api/abdm/status
-GET  /api/abdm/queues
-POST /api/gofile/resolve
-POST /api/abdm/send
-```
-
-`/api/*` には次が必要です。
-
-```http
-X-GoFile-ABDM: 1
-```
-
-POST/PUT/PATCH は JSON を要求します。
-
-## 内部処理
-
-```text
-GoFile URL / content ID
- ↓ validate
-resolve cache
- ↓ miss
-GoFile guest token / Website Token
- ↓
-recursive folder resolve
- ↓
-public tree + opaque file keys
- ↓ user selection
-file key lookup in Helper memory
- ↓
-path sanitize / folder build
- ↓
-ABDM task registration
-```
-
-詳細: [`DEVELOPMENT.md`](DEVELOPMENT.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-
----
-
-# データと状態
-
-## 永続
-
-Userscript GM storage:
-
-- queue ID
-- last Save folder
-- presets
-
-Windows:
-
-- optional HKCU startup entry
-- `helper.log`, `helper.log.1`
-
-## process / page memory
-
-- GoFile guest token
-- resolved content cache
-- resolve ID cache
-- selection
-- password digest map
-- failed file keys
-
-DB / Redis / persistent server queue はありません。
-
 ---
 
 # 再開・復旧
@@ -608,171 +423,123 @@ DB / Redis / persistent server queue はありません。
 - **GoFile rate limit:** 自動 retry せず user が後で再試行
 - **ABDM individual send failure:** 残りを継続し `Retry Failed` 候補へ記録
 
-詳細な既知事項は `DEVELOPMENT.md` を参照してください。
+Userscript が持つ古い `resolve_id` は Helper 再起動後に無効になります。
 
 ---
 
 # セキュリティ
 
-現在の重要な制限:
+重要な境界:
 
-- Flask は `127.0.0.1` のみ
-- ABDM は `127.0.0.1:15151` 固定
-- GoFile `/d/<id>` / bare content ID のみ受理
-- generic URL fetch endpoint なし
-- `/api/*` request marker 必須
-- JSON guard
-- permissive CORS を追加していない
-- GoFile path segment を sanitize
-- direct link は HTTPS + `gofile.io` / subdomain に限定
-- password / token / Cookie / direct URL を log しない
-- direct URL / Cookie を Userscript へ返さない
-- 429 を blind retry しない
-- password/access-denied folder を部分成功として cache しない
+- Flask bind は `127.0.0.1` のみ
+- ABDM 接続先は `127.0.0.1:15151` 固定
+- `/api/*` は `X-GoFile-ABDM: 1` marker を要求
+- POST / PUT / PATCH は JSON を要求
+- GoFile URL は `https://gofile.io/d/<id>` または bare content ID のみ
+- direct download URL は `https` かつ `gofile.io` / subdomain のみ
+- GoFile 由来 path segment を sanitize
+- Userscript の `@connect` は localhost のみ
+- direct URL / Cookie / guest token / Website Token / password を意図的に log しない
+- Userscript には direct URL / Cookie を返さず opaque file key を返す
 
-詳細と「絶対に弱めない条件」は [`DEVELOPMENT.md`](DEVELOPMENT.md) を参照してください。
+localhost service を LAN 公開したり、CORS を広げたり、generic URL proxy を追加しないでください。
 
 ---
 
-# 既知の制限 / 要検証
+# 既知の制限・要検証事項
 
-### 現在の仕様上の制限
+- `resolve_id` expiry 後の自動再 resolve では、元 selection の保持と自動再送は保証していません
+- send 中の SPA navigation では旧 page の残り task 登録が続く可能性があります
+- ABDM POST の結果が network 上不明な場合、手動 `Retry Failed` で重複 task になる可能性があります
+- `helper.log` の 2 MiB rotation は Helper 起動時判定で、稼働中常時 rotation ではありません
+- Save folder が空の structure mode では、ABDM の unknown default folder に relative subfolder だけを確実に追加できません
+- GoFile / ABDM の外部仕様変更により互換性が壊れる可能性があります
 
-- Python 自身は file downloader ではない
-- transfer speed / ETA / pause / resume / cancel は ABDM 側
-- Save root 空のまま未知の ABDM default folder へ relative subfolder を確実に追加できない
-- Windows tray は Windows 専用
-- GitHub Actions / CI は未導入
-- GitHub Releases は調査時点で未作成
-
-### コード確認で見つかった要検証事項
-
-次は今回勝手に修正していません。
-
-- `resolve_expired` からの再 resolve で元 selection を自動保持・再送しない可能性
-- send 中の SPA navigation で旧 batch の残り送信が継続する可能性
-- ABDM POST の結果不明時、手動 **Retry Failed** で task が重複する可能性
-
-詳細: [`DEVELOPMENT.md`](DEVELOPMENT.md)
+詳細は [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) と [`DEVELOPMENT.md`](DEVELOPMENT.md) を参照してください。
 
 ---
 
-# 意図的に実装していない機能
+# 診断・テスト
 
-- Premium / Account Token 入力 UI
-- browser 直接 download
-- Aria2 / IDM / JDownloader 等の downloader selector
-- Python file streaming / downloader
-- download history database
-- dashboard
-- React / Vue
-- Docker
-- persistent server-side queue
-- Redis / Celery
-- multi-user / LAN service
+health check:
 
----
+```text
+http://127.0.0.1:8765/health
+```
 
-# テスト
+Windows tray log:
 
-Python:
+```text
+helper.log
+helper.log.1
+```
+
+Python tests:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Userscript Node tests:
+Userscript tests:
 
 ```bash
 node --test tests/test_userscript.cjs
 ```
 
-Syntax:
+syntax checks:
 
 ```bash
 python -m py_compile app.py gofile.py abdm.py tray.py
 node --check gofile-abdm.user.js
 ```
 
-テストは mock / VM を中心にしており、通常は GoFile / ABDM への実通信を目的としません。
-
-`v1.0.3` の PR には当時 `41 tests passed` と `node --check` pass の記録がありますが、現在の `main` にはその後の変更があるため、release 前には改めて実行してください。
+現在 CI / GitHub Actions はありません。実行した test / smoke test と未実施項目を release ごとに区別してください。
 
 ---
 
-# トラブルシューティング
+# 更新
 
-代表例のみここに記載します。詳細は [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) を参照してください。
+source tree を更新した場合:
 
-## Helper Offline
+1. project files を更新
+2. `python -m pip install -r requirements.txt` を再実行
+3. tray / Helper を再起動
+4. `gofile-abdm.user.js` を Userscript manager へ更新
 
-```text
-http://127.0.0.1:8765/health
-```
-
-を確認し、必要なら `python app.py` または `start-tray.cmd` を起動します。
-
-## ABDM Offline
-
-ABDM を起動し、`127.0.0.1:15151` の `/queues` が利用可能な状態か確認します。
-
-## `website_token_rejected`
-
-GoFile の Website Token 条件が変わった可能性があります。現行 GoFile behavior を再調査し、必要なら `GOFILE_WT_SALT` 等を更新します。
-
-## `rate_limited`
-
-Helper は自動 retry しません。時間を置いて再試行してください。
-
-## checkbox が表示されない
-
-**Items** fallback selector を使用してください。
+Helper を更新した後は、古い memory cache を残さないため再起動してください。
 
 ---
 
-# 診断
+# アンインストール
 
-問題報告時は、秘密情報を除外して次を確認してください。
+1. tray の **Start with Windows** を off
+2. tray を **Exit**
+3. Userscript manager から GoFile ABDM Helper を削除
+4. project directory を削除
+5. 不要なら Python packages / ABDM を別途削除
 
-- OS
-- Python version
-- Userscript manager / version
-- ABDM version
-- `VERSION`
-- Git commit SHA
-- Helper `/health`
-- error code / HTTP status
-- 再現操作
-- `helper.log` の安全な範囲
+残り得るもの:
 
-private share URL、password、Cookie、token、Authorization、direct URL は公開しないでください。
+- Userscript manager の GM storage
+- `helper.log` / `helper.log.1`
+- Windows Run entry（Start with Windows を off にしていない場合）
 
 ---
 
 # 開発者向け資料
 
-- [DEVELOPMENT.md](DEVELOPMENT.md) — 内部実装、状態、API、安全条件、既知問題、開発引き継ぎ
-- [CHANGELOG.md](CHANGELOG.md) — release / Unreleased 履歴
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component / data flow / trust boundary
-- [docs/RELEASE.md](docs/RELEASE.md) — release 現状と手順
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — 詳細 troubleshooting
+- [`DEVELOPMENT.md`](DEVELOPMENT.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/RELEASE.md`](docs/RELEASE.md)
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
 
----
-
-# 参考にしているプロジェクト
-
-この project は source file をそのまま取り込むのではなく、挙動 / API / architecture の参考として次を確認して実装されたと repository 内で記録されています。
-
-- `ewigl/gofile-enhanced`
-- `martadams89/gofile-dl`
-- `amir1376/ab-download-manager`
-
-第三者通知は [`LICENSES/optional-license-notices.txt`](LICENSES/optional-license-notices.txt) を参照してください。
-
-現在の ABDM integration は、公開 `REST-API.yml` の `GET /queues` と `POST /start-headless-download` を使用します。
+開発開始時は README / DEVELOPMENT / CHANGELOG / 最新コードを確認し、仕様変更時は同じ変更で関連ドキュメントを同期してください。
 
 ---
 
 # License
 
-MIT License。[`LICENSE`](LICENSE) を参照してください。
+MIT License。`LICENSE` を参照してください。
+
+参照した外部プロジェクトに関する通知は `LICENSES/optional-license-notices.txt` を参照してください。
