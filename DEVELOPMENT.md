@@ -22,15 +22,20 @@
 - default branch: `main`
 - 正式リリース体系: **`v1.0.0` から開始**
 - `VERSION`: `1.0.0`
-- `v1.0.0`: 現在の `main` に存在する機能をまとめた初回正式リリース
+- `v1.0.0`: **2026-09-14 に公開済み**の初回正式リリース
+- `v1.0.0` tag target: `e4fcf3a2ce0cee18f9320a9ff5df683acf78912a`
+- GitHub Release title: `GoFile ABDM Helper v1.0.0`
 - GitHub Actions / CI: 未導入
 - 専用 build / binary artifact: なし
+- custom Release asset: なし。GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を利用可能
+
+`v1.0.0` 公開後の `main` には documentation-only change が入っており、これらは `CHANGELOG.md` の `[Unreleased]` で管理します。公開済み `v1.0.0` tag は移動しません。
 
 ### 過去の version 名について
 
 開発途中の commit / PR には `v1.0.1`～`v1.0.3` という名称が残っています。
 
-これらは今後の **正式公開リリース履歴としては扱いません**。Tag / GitHub Release の公開履歴を整理し、現在の完成状態を `v1.0.0` として最初に公開します。
+これらは **正式公開リリース履歴としては扱いません**。公開履歴は整理済みで、現在の完成状態を `v1.0.0` として最初の正式 Release にしました。
 
 履歴調査では commit / PR の内容を参照して構いませんが、利用者向け Version 判定は `VERSION` / `CHANGELOG.md` / release tag を正としてください。
 
@@ -41,9 +46,9 @@
 - Python tests: `tests/test_core.py`
 - Userscript Node tests: `tests/test_userscript.cjs`
 
-開発途中の PR では Python test / syntax check の成功記録がありますが、**今回の v1.0.0 release preparation で実機 E2E を新たに実行したとは記録しません**。
+開発途中の PR では Python test / syntax check の成功記録がありますが、**v1.0.0 公開時に実機 E2E を新たに実行したとは記録しません**。
 
-リリース前に推奨する確認:
+今後のリリース前に推奨する確認:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -555,6 +560,8 @@ helper.log.1
 - [ ] security invariants を維持
 - [ ] tag が release commit を指す
 - [ ] GitHub Release title / note / tag が一致
+
+公開後に documentation fix を `main` へ追加した場合は `[Unreleased]` に記録し、既存の公開 tag を移動しないでください。
 
 ---
 
