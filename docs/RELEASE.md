@@ -10,7 +10,7 @@
 
 正式な公開リリース体系は **`v1.0.0` から開始**します。
 
-開発途中の commit / PR には `v1.0.1`～`v1.0.3` という名称がありますが、それらは今後の正式リリース履歴としては扱いません。Tag / GitHub Release の公開履歴を整理したうえで、現在の `main` に含まれる完成状態を `v1.0.0` として最初に公開します。
+現在の `main` に含まれる完成状態を、最初の正式公開版 `v1.0.0` としてリリースします。
 
 現在の release metadata:
 
@@ -60,7 +60,7 @@ README release version
 `v1.0.0` の期待値:
 
 ```text
-VERSION            = 1.0.0
+VERSION             = 1.0.0
 Userscript @version = 1.0.0
 CHANGELOG           = ## [1.0.0] - 2026-09-14
 Git tag             = v1.0.0
@@ -153,28 +153,63 @@ CI はないため、実行結果は手動で確認します。
 
 ## 7. v1.0.0 Release title / notes
 
-推奨 title:
+### Title
 
 ```text
 GoFile ABDM Helper v1.0.0 — Initial Release
 ```
 
-推奨 note は README / CHANGELOG と矛盾しない内容にします。
+### Release notes
 
-最低限含める内容:
+```markdown
+## GoFile ABDM Helper v1.0.0
 
-- 初回正式リリースであること
-- GoFile → ABDM の localhost bridge であること
-- file / folder selection
-- recursive resolve
-- Send to ABDM / Send Flat
-- queue / Save folder / preset
-- password-protected root / child folder
-- rate-limit / cache safety
-- Windows tray / startup
-- security boundary
-- known limitations
-- installation は README を参照
+GoFile の既存ページから、選択したファイル / フォルダを localhost 専用 Helper 経由で **AB Download Manager (ABDM)** へ登録できる GoFile ABDM Helper の初回正式リリースです。
+
+### 主な機能
+
+- GoFile ページへ Userscript の選択 UI / toolbar を統合
+- file / folder 選択と recursive folder resolve
+- **Send to ABDM** による folder structure 保持
+- **Send Flat** による flat task 登録
+- ABDM queue、Save folder、Save preset の選択
+- file 単位の送信結果と **Retry Failed**
+- DOM row を対応付けられない場合の **Items** fallback selector
+- Helper resolve 前や一時失敗中にも使える provisional selection
+- root / child folder の password challenge
+- parent / child で異なる password と credential inheritance
+- GoFile guest session / dynamic Website Token
+- 20分の resolved-content cache
+- recursive resolve の直列化と request pacing
+- Windows system tray / Helper 自動監視
+- user-level **Start with Windows**
+
+### 安全設計
+
+- Helper は `127.0.0.1` のみに bind
+- ABDM 接続先は `127.0.0.1:15151` に固定
+- generic URL proxy を提供しない
+- GoFile URL / content ID / direct-link host を検証
+- GoFile 由来 path segment を sanitize
+- rate limit 時は blind retry せず現在の resolve を停止
+- password、token、Cookie、Authorization header、一時 direct URL を意図的に log しない
+- direct download URL / Cookie を Userscript へ返さず Helper memory 内で管理
+
+### 既知の制限
+
+- Save folder が空の structure mode では、ABDM の default folder に relative subfolder だけを確実に追加できません。folder structure を確実に保持する場合は Save root を明示してください。
+- `resolve_id` expiry 後の再 resolve では、元 selection の保持と自動再送を保証していません。
+- send 中に GoFile の SPA navigation を行うと、旧ページの残り task 登録が続く可能性があります。
+- ABDM POST の結果が network 上不明な場合、手動 **Retry Failed** により duplicate task になる可能性があります。
+- `helper.log` の rotation は Helper 起動時判定です。
+- Premium / account token 入力、download 進捗 / ETA / pause / resume は実装していません。
+
+### インストール / 使用方法
+
+導入方法、設定、使い方、トラブルシューティングは `README.md` を参照してください。
+
+> このツールは GoFile および AB Download Manager の公式プロジェクトとは無関係の非公式ツールです。
+```
 
 この repository には必須 binary asset はありません。
 
@@ -190,7 +225,7 @@ GitHub Release は同じ `v1.0.0` tag を選びます。
 
 - tag を古い commit に付けない
 - docs/version sync 前の commit に tag を付けない
-- draft / prerelease にするかは release policy に従う。今回の目的は初回正式リリースなので通常 release を想定
+- 今回は初回正式リリースなので通常 release とする
 - title / notes / tag が同じ version を指すことを確認
 
 ---
@@ -199,7 +234,7 @@ GitHub Release は同じ `v1.0.0` tag を選びます。
 
 - [ ] Git tag `v1.0.0` が期待する commit を指す
 - [ ] GitHub Release が `v1.0.0` tag を使用
-- [ ] GitHub Release title が `v1.0.0`
+- [ ] GitHub Release title が `GoFile ABDM Helper v1.0.0 — Initial Release`
 - [ ] `VERSION` = `1.0.0`
 - [ ] Userscript `@version` = `1.0.0`
 - [ ] CHANGELOG / README が一致
