@@ -52,11 +52,15 @@ GoFile の Web UI で表示している file / folder を、AB Download Manager 
 
 ## v1.0.0 について
 
-`v1.0.0` は、このリポジトリの **最初の正式な公開リリース**として扱います。
+`v1.0.0` は、このリポジトリの **最初の正式な公開リリース**です。2026-09-14 に GitHub Release として公開されています。
 
-開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、Tag / GitHub Release の公開履歴はいったん整理し、現在の `main` に入っている機能をまとめて `v1.0.0` として公開します。
+- Release: https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.0.0
+- Tag: `v1.0.0`
+- Release title: `GoFile ABDM Helper v1.0.0`
 
-過去の commit / PR 名は開発履歴として残しますが、利用者向けの正式リリース履歴は `v1.0.0` から開始します。
+開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、これらは正式な公開 Release ではありません。利用者向けの正式リリース履歴は `v1.0.0` から開始します。
+
+`v1.0.0` 公開後の `main` には README などの documentation-only change が入る場合があります。**公開版そのものを再現したい場合は `v1.0.0` tag / Release の source archive を使用してください。**
 
 ---
 
@@ -144,9 +148,40 @@ project/
 
 # インストール
 
-## 1. AB Download Manager を用意
+Windows で初めて導入する場合は、次の順番で進めるのが簡単です。
 
-ABDM をインストールして起動します。
+## 1. GoFile ABDM Helper をダウンロード
+
+### Release ZIP（推奨）
+
+1. [`v1.0.0` Release](https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.0.0) を開く
+2. GitHub が表示する **Source code (zip)** をダウンロード
+3. ZIP を任意の固定フォルダへ展開する
+
+例:
+
+```text
+C:\Tools\gofile-abdm-helper
+```
+
+`v1.0.0` には exe / installer などの custom asset はありません。GitHub が release tag から自動生成する **Source code (zip)** / **Source code (tar.gz)** を利用します。
+
+> `v1.0.0` の source archive は公開時点の snapshot です。最新の README は `main` 上のこのページを参照してください。
+
+### Git を使う場合
+
+公開版 `v1.0.0` を取得する場合:
+
+```bash
+git clone --branch v1.0.0 --depth 1 https://github.com/Hoyomaru/gofile-abdm-helper.git
+cd gofile-abdm-helper
+```
+
+開発中の最新 `main` を使う場合は branch 指定を外してください。
+
+## 2. AB Download Manager を用意
+
+AB Download Manager をインストールして起動します。
 
 Helper は次へ接続します。
 
@@ -154,15 +189,31 @@ Helper は次へ接続します。
 127.0.0.1:15151
 ```
 
-## 2. Python dependencies
+ABDM が起動していないと、Userscript 側では ABDM へ task を登録できません。
+
+## 3. Python 3.10+ と dependencies を用意
+
+まず Python version を確認します。
+
+```bash
+python --version
+```
+
+`Python 3.10` 以上であることを確認してください。
+
+`python` command が見つからない場合は Python をインストールし、terminal から `python` を実行できる状態にします。
+
+展開した project directory で次を実行します。
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-## 3. Helper を起動
+## 4. Helper を起動
 
 ### Windows: tray mode（推奨）
+
+`start-tray.cmd` をダブルクリックするか、project directory で次を実行します。
 
 ```text
 start-tray.cmd
@@ -192,6 +243,8 @@ value: GoFileABDMHelper
 
 ### Manual Helper
 
+tray を使わない場合:
+
 ```bash
 python app.py
 ```
@@ -208,9 +261,25 @@ health check:
 http://127.0.0.1:8765/health
 ```
 
-## 4. Userscript
+## 5. Userscript をインストール
 
-Violentmonkey / Tampermonkey で新しい Userscript を作成し、`gofile-abdm.user.js` の内容を入れます。
+先に Violentmonkey または Tampermonkey を browser へインストールしてください。
+
+### release 版を直接開く方法
+
+Userscript manager が有効な browser で次を開きます。
+
+https://raw.githubusercontent.com/Hoyomaru/gofile-abdm-helper/v1.0.0/gofile-abdm.user.js
+
+通常は Userscript manager のインストール画面が開くので、内容を確認してインストールします。
+
+### 手動で入れる方法
+
+直接インストール画面が開かない場合:
+
+1. Userscript manager で新しい script を作成
+2. `gofile-abdm.user.js` の内容をすべて貼り付け
+3. 保存して有効化
 
 許可する cross-origin connect は次だけです。
 
@@ -221,15 +290,25 @@ localhost
 
 `@connect *` / `unsafeWindow` は使用しません。
 
-## 5. GoFile を開く
+Userscript metadata に `@updateURL` / `@downloadURL` はないため、将来の新しい Release へ更新する場合は新しい `gofile-abdm.user.js` を手動で更新してください。
 
-通常どおり共有 URL を開きます。
+## 6. 正常に導入できたか確認
+
+1. AB Download Manager を起動する
+2. `start-tray.cmd` を起動する
+3. tray menu で Helper が **Running** になっていることを確認する
+4. browser で `http://127.0.0.1:8765/health` が応答することを確認する
+5. GoFile の共有 URL を開く
+6. GoFile page に ABDM toolbar が追加されることを確認する
+7. toolbar で ABDM が接続状態になることを確認する
+
+GoFile share の例:
 
 ```text
 https://gofile.io/d/xxxxxxxx
 ```
 
-GoFile page に ABDM toolbar が追加されます。
+ここまで確認できれば基本的な導入は完了です。
 
 ---
 
@@ -499,14 +578,16 @@ node --check gofile-abdm.user.js
 
 # 更新
 
-source tree を更新した場合:
+新しい正式 Release が公開された場合:
 
-1. project files を更新
+1. 新しい Release の source archive を取得して project files を更新
 2. `python -m pip install -r requirements.txt` を再実行
 3. tray / Helper を再起動
-4. `gofile-abdm.user.js` を Userscript manager へ更新
+4. 新しい `gofile-abdm.user.js` を Userscript manager へ更新
 
 Helper を更新した後は、古い memory cache を残さないため再起動してください。
+
+`main` を直接追従する場合は未リリース変更を含む可能性があります。安定した公開版を使う場合は Release tag を使用してください。
 
 ---
 
