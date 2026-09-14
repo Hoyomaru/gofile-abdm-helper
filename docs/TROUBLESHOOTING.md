@@ -1,72 +1,52 @@
 # トラブルシューティング
 
-GoFile ABDM Helper の詳細な問題切り分け手順です。
+GoFile ABDM Helper `v1.0.0` の問題切り分け手順です。
 
-基本方針は **症状 → 原因候補 → 確認 → 対処** の順です。
+基本は **症状 → 原因候補 → 確認 → 対処** の順で確認します。
 
-秘密情報を含むため、password、Cookie、Authorization header、guest token、direct download URL、private share URL を公開 Issue やログへ貼らないでください。
+password、Cookie、Authorization header、guest token、Website Token、一時 direct download URL、private share URL は公開 Issue やログへ貼らないでください。
 
 ---
 
 ## 1. `Python Helper is offline.`
 
-### 症状
-
-- Userscript が Helper offline と表示する
-- Load / Send が localhost 接続エラーになる
-
 ### 原因候補
 
 - `app.py` が起動していない
-- Windows tray が起動していない / Helper start に失敗した
-- Python dependency が不足
-- port 8765 を別 process が使用
+- tray が起動していない / Helper start に失敗
+- dependency 不足
+- port 8765 conflict
 
 ### 確認
-
-Browser で次を開きます。
 
 ```text
 http://127.0.0.1:8765/health
 ```
 
-期待値は JSON の `ok: true` です。
+期待値は `ok: true`。
 
-Windows tray 使用時は tray status と `helper.log` を確認します。
+Windows tray 使用時は tray status と `helper.log` も確認します。
 
 ### 対処
-
-手動:
 
 ```bash
 python -m pip install -r requirements.txt
 python app.py
 ```
 
-Windows tray:
+Windows:
 
 ```text
 start-tray.cmd
 ```
 
-tray に `Running (external)` と出る場合、別に起動した Helper がすでに port 8765 を使用しています。tray は外部 process を勝手に終了しません。
+`Running (external)` は、tray 外で起動した Helper がすでに port 8765 を使用している状態です。
 
 ---
 
 ## 2. `pythonw.exe was not found in PATH.`
 
-### 症状
-
-`start-tray.cmd` 実行時に上記メッセージが出る。
-
-### 原因候補
-
-- Python が未導入
-- `pythonw.exe` を含む Python install directory が PATH から見えない
-
-### 対処
-
-まず通常の command line で確認します。
+確認:
 
 ```bat
 where python
@@ -78,74 +58,44 @@ Python install / PATH を修正後、`start-tray.cmd` を再実行します。
 
 ---
 
-## 3. Windows 起動時に tray が立ち上がらない
+## 3. Windows 起動時に tray が出ない
 
-### 症状
-
-以前 **Start with Windows** を有効にしたが login 後に tray がない。
-
-### 実装上の保存場所
+startup registration:
 
 ```text
 HKCU\Software\Microsoft\Windows\CurrentVersion\Run
 value: GoFileABDMHelper
 ```
 
-### 確認
-
-1. 一度 `start-tray.cmd` を手動起動
-2. tray の **Start with Windows** が check 済みか確認
-3. Python の配置場所を変更していないか確認
-
-登録値は `pythonw.exe tray.py` の実パスと一致している必要があります。Python / project directory を移動した場合、一度 off → on にして再登録してください。
+project directory / Python path を移動した場合、一度 **Start with Windows** を off → on にして再登録します。
 
 ---
 
 ## 4. `ABDM Offline`
 
-### 症状
-
-- toolbar が `ABDM Offline`
-- Settings の queue が取得できない
-- Send 前に offline error
-
-### 原因候補
-
-- AB Download Manager が起動していない
-- localhost REST API / browser integration が利用できない
-- port `15151` で応答していない
-
-### 実装が確認に使う endpoint
+Helper が確認に使う endpoint:
 
 ```text
 GET http://127.0.0.1:15151/queues
 ```
 
-### 対処
+AB Download Manager が起動し、この endpoint が default port 15151 で応答することを確認してください。
 
-ABDM を起動し、REST API が default port 15151 で利用可能な状態にします。
-
-この project は ABDM 接続先を任意 host / port へ変更する UI を持ちません。
+この project は ABDM host / port を任意変更する UI を持ちません。
 
 ---
 
 ## 5. queue が Settings に出ない
 
-### 症状
+Settings open ごとに `/queues` を refresh します。
 
-ABDM は Connected だが期待する queue がない。
+以前保存した queue が消えている場合、`Unavailable queue (#...)` になる場合があります。
 
-### 確認
-
-Settings を閉じて再度開きます。Settings open ごとに `/queues` を取得します。
-
-以前保存した queue ID が ABDM 側でなくなっている場合、`Unavailable queue (#...)` として表示される場合があります。
-
-### 対処
+対処:
 
 - ABDM 側で queue を確認
-- Settings で別 queue を選択
-- または `Default (ABDM)` に戻す
+- Settings を開き直す
+- 別 queue または `Default (ABDM)` を選択
 
 `Default (ABDM)` は `queueId` field を省略します。
 
@@ -153,214 +103,151 @@ Settings を閉じて再度開きます。Settings open ごとに `/queues` を�
 
 ## 6. `website_token_rejected`
 
-### 症状
+GoFile が Website Token の salt / User-Agent / language 等の検証条件を変更した可能性があります。
 
-GoFile resolve が `website_token_rejected` で失敗する。
-
-### 原因候補
-
-GoFile が Website Token の salt、User-Agent、language 等の検証条件を変更した可能性があります。
-
-### 現在の設定項目
+環境変数:
 
 - `GOFILE_WT_SALT`
 - `GOFILE_USER_AGENT`
 - `GOFILE_LANGUAGE`
 
-Windows PowerShell 例:
+例:
 
 ```powershell
 $env:GOFILE_WT_SALT="current-value"
 python app.py
 ```
 
-### 注意
-
-古い固定 Website Token をコードへ貼り付ける方式へ安易に戻さないでください。現在は guest token / time window 等から動的生成しています。
-
-実際に新しい salt が必要かどうかは、GoFile 側の現行実装を再調査してから判断してください。
+古い固定 Website Token をコードへ貼り付ける方式へ戻さず、GoFile の現行実装を確認してから変更してください。
 
 ---
 
 ## 7. `rate_limited` / HTTP 429
 
-### 症状
+現在の behavior:
 
-resolve が rate limit で停止する。
+- recursive content request は default 0.75 sec pacing
+- HTTP 429 / API rate limit で current resolve を即停止
+- rate limit の automatic retry はしない
+- successful resolve は20分 cache
 
-### 現在の挙動
+対処:
 
-- recursive content request はデフォルト 0.75秒間隔
-- HTTP 429 / API rate limit を受けたら **その resolve は即停止**
-- rate limit を自動 retry しない
-- 同一の成功済み resolve は20分 cache される
+- 時間を置く
+- Load を連打しない
+- 必要なら `GOFILE_REQUEST_INTERVAL` を安全側へ調整
 
-### 対処
-
-時間を置いてから再試行します。
-
-rate limit 中に Load を連打しないでください。
-
-`GOFILE_REQUEST_INTERVAL` で pacing を変更できますが、rate limit を避けるための安全策なので、速度だけを理由に 0 へすることは推奨しません。
+速度だけを理由に pacing を無効化することは推奨しません。
 
 ---
 
-## 8. resolve が長時間かかる
+## 8. resolve が長い
 
-### 症状
+large tree では folder / pagination request 数に応じて時間がかかります。
 
-大きな folder tree で Load が長い。
+現在の regression test には 242 request を 0.75 sec pacing した場合、pacing だけで約180.75 sec になるケースがあります。
 
-### 原因候補
+Userscript の recursive resolve に fixed 180 sec deadline はありません。Helper の個別 HTTP timeout は別に存在します。
 
-recursive folder 数が多く、各 content request を pace している。
-
-`v1.0.3` では 242 request を想定した regression test があり、0.75秒 pacing だけで約180.75秒になることを確認する test が追加されています。
-
-### 現在の設計
-
-Userscript 側の resolve に固定180秒 timeout は設定していません。
-
-Helper 内の個々の HTTP request timeout は別に存在します。
-
-### 対処
+対処:
 
 - progress / error を待つ
-- rate limit でなければ無闇に Load を連打しない
-- Helper log を確認
+- rate limit でなければ Load を連打しない
+- `helper.log` を確認
 
 ---
 
 ## 9. password prompt が出る
 
-### 症状
+`v1.0.0` は root / child folder の password challenge に対応します。
 
-GoFile folder の resolve 中に password prompt が表示される。
-
-### 現在の動作
-
-- root と child folder で別 password を扱える
-- plaintext は Browser 側で SHA-256 化して Helper へ digest map として渡す
-- wrong password の場合、その folder の digest を更新して同じ root を再 resolve
-- Cancel / Escape / 背景 click で中止可能
+- plaintext は browser 内で SHA-256
+- Helper へ content ID → digest map を送る
+- parent と child で異なる password を扱える
+- wrong password は対象 folder の digest を更新して same root を re-resolve
+- Cancel / Escape / background click で cancel
 - empty password は送信しない
 
-GoFile page がすでに解除済みの場合、`sessionStorage` の `password|<content-id>` digest を一度だけ候補として使う場合があります。
-
-### 対処
-
-正しい password を入力するか Cancel します。
-
-password を公開 Issue / `helper.log` へ記録しないでください。
+GoFile page が解除済みの場合、`sessionStorage` の `password|<content-id>` digest を一度だけ候補として利用する場合があります。
 
 ---
 
-## 10. `wrong_password` が繰り返される
+## 10. `wrong_password` が続く
 
-### 原因候補
+原因候補:
 
-- 入力 password が違う
-- parent と child で password が異なる
-- GoFile 側の access state が変わった
-- `sessionStorage` の補助 digest が古く、最初の1回が reject された
+- password が違う
+- parent / child の password が違う
+- GoFile access state が変わった
+- `sessionStorage` candidate が古い
 
-### 対処
-
-表示される Target path を確認し、その folder の password を入力します。
-
-補助 storage 値は一度 reject されたら同一 operation で無限再利用しない設計です。
+表示される Target path を確認し、その folder に対応する password を入力します。
 
 ---
 
 ## 11. `content_access_denied`
 
-### 症状
+GoFile response が access 不可を示しているものの、password challenge として分類できない状態です。
 
-password prompt ではなく 403 系 access denied になる。
+確認:
 
-### 意味
+- share が有効か
+- browser の通常 GoFile UI で access 可能か
+- private / expired / その他制限ではないか
 
-GoFile response が access 不可を示しているが、現在の Helper が password challenge として分類できない状態です。
-
-### 対処
-
-- share がまだ有効か確認
-- browser の通常 GoFile UI で access 可能か確認
-- private / expired / その他制限の可能性を確認
-
-正確な理由が response から分からない場合、Helper は推測で password prompt を出しません。
+理由が不明な場合、Helper は推測で password prompt を出しません。
 
 ---
 
-## 12. チェックボックスが一部表示されない
+## 12. checkbox が一部表示されない
 
-### 原因候補
-
-GoFile の DOM structure が変化し、row matching ができない。
-
-### 現在対応している識別子
+row matching priority:
 
 - `data-content-id`
 - `data-id`
 - `data-item-id`
 - `data-uuid`
+- link
+- filename text fallback
 
-link / filename fallback もあります。
+GoFile DOM change により mapping できない場合は toolbar の **Items** を使用します。
 
-### 対処
-
-toolbar の **Items** を開き、fallback tree selector を使用します。
-
-DOM row matching が壊れても Helper の resolve/send 自体は row class に依存しません。
+Helper resolve / send logic 自体は GoFile row class に依存しません。
 
 ---
 
-## 13. Helper resolve 前でも選択したい
+## 13. Helper resolve 前に選択したい
 
-表示中 row に content ID がある場合は provisional checkbox が使えます。
+visible row に content ID があれば provisional checkbox が使えます。
 
-選択後、Send の直前または Load 成功時に解決済み tree と照合します。
-
-ただし、ABDM へ送るには direct URL / headers が必要なので、最終的には resolve success が必要です。
+ただし ABDM 送信には direct URL / headers の resolve が必要なので、最終的には resolve success が必要です。
 
 ---
 
 ## 14. `Resolved GoFile session expired.`
 
-### 症状
+Helper resolve cache TTL は20分です。Helper restart でも cache は消えます。
 
-送信時に resolve session expired と表示される。
+現行実装は 410 `resolve_expired` を受けると re-resolve しますが、元 `selectedKeys` の自動保持と batch 自動再送を保証していません。
 
-### 原因
+対処:
 
-Helper の resolve cache TTL は20分です。Helper 再起動でも cache は消えます。
-
-### 現在のコード上の注意
-
-Userscript は `resolve_expired` を受けると再 resolve を開始しますが、現在の実装ではこの経路が元の `selectedKeys` を自動保持して batch を再送する保証はありません。
-
-### 対処
-
-1. resolve が完了するのを待つ
+1. re-resolve 完了を待つ
 2. selection を再確認
 3. 必要なら再選択
 4. Send を実行
 
-これは現在 **要検証の既知事項**です。詳細は `DEVELOPMENT.md` を参照してください。
+これは既知の要検証事項です。
 
 ---
 
-## 15. `Send to ABDM` で folder structure が期待どおりにならない
+## 15. `Send to ABDM` で folder structure が期待と違う
 
-### Save folder が空の場合
+Save folder empty の場合、Helper は ABDM の optional `folder` を省略します。
 
-Helper は ABDM の optional `folder` field を省略します。
+そのため「ABDM default directory + GoFile relative subfolder」を Helper 側から確実に指定できません。
 
-そのため「ABDM の default directory + GoFile relative subfolder」を Helper 側から確実に指定できません。
-
-### 対処
-
-folder structure を確実に保ちたい場合は明示的な root を指定します。
+structure を確実に保持する場合は明示 root を設定します。
 
 ```text
 D:/Downloads
@@ -378,123 +265,118 @@ ABDM folder:
 D:/Downloads/Anime/Subs
 ```
 
-Flat にしたい場合は **Send Flat** を使います。
+Flat にする場合は **Send Flat**。
 
 ---
 
-## 16. 同じ download task が ABDM に重複した
+## 16. ABDM に duplicate task ができた
 
-### 原因候補
+`POST /start-headless-download` が ABDM 側では成功したが Helper が response を受け取れなかった場合、client からは failed に見える可能性があります。
 
-`POST /start-headless-download` の response を Helper が受け取れない network failure が起きたが、ABDM 側では task 登録が完了していた可能性があります。
+その状態で `Retry Failed` を実行すると duplicate task になる可能性があります。
 
-その file は client から見ると failed になり、`Retry Failed` で再送すると重複する可能性があります。
+現在:
 
-### 現在の設計
+- automatic blind retry はしない
+- idempotency key / reconciliation API は使用していない
+- Retry Failed は user action
 
-- Helper は ABDM POST を自動 blind retry しない
-- ABDM task の idempotency key / 照合 API は現在使用していない
-- `Retry Failed` はユーザー操作
-
-### 対処
-
-通信 timeout / connection reset 直後の Retry Failed は、まず ABDM task list に同じ item が入っていないか確認してください。
+network timeout / reset 直後は、先に ABDM task list を確認してください。
 
 ---
 
-## 17. Send 中に別の GoFile page へ移動した
+## 17. Send 中に別 GoFile page へ移動した
 
-### 現在のコード上の注意
+resolve には stale response generation guard がありますが、send loop には同等の navigation cancellation guard がありません。
 
-resolve には stale response guard がありますが、進行中の send loop には navigation generation guard がありません。
+old page の remaining task registration が続く可能性があります。
 
-したがって send 中の SPA navigation では、旧 page の残り task 登録が続く可能性があります。
-
-### 対処
-
-送信 progress が完了してから別 share へ移動する運用を推奨します。
-
-これは現在 **要検証の既知事項**です。
+送信完了後に別 share へ移動する運用を推奨します。
 
 ---
 
-## 18. `helper.log` が 2 MiB を超えている
+## 18. `helper.log` が 2 MiB を超えた
 
-### 現在のローテーション方式
-
-`tray.py` は Helper を起動する際に log size を確認します。
-
-2 MiB を超えていれば:
+rotation は Helper startup 時に size を確認します。
 
 ```text
 helper.log -> helper.log.1
 ```
 
-既存 `.1` は置き換えます。
-
-### 注意
-
-稼働中に常時監視して 2 MiB 到達時点で即 rotate する方式ではありません。
+running 中に 2 MiB 到達時点で即 rotate する方式ではありません。
 
 ---
 
-## 19. GoFile download link が reject される
+## 19. direct download link が reject される
 
-Helper は解決済み direct link を無条件で受け入れません。
-
-必要条件:
+Helper が許可する resolved link:
 
 - scheme: `https`
-- hostname: `gofile.io` または `*.gofile.io`
+- host: `gofile.io` or `*.gofile.io`
 
-GoFile API behavior が将来変化し、正規の download domain がこの条件外になった場合はコード調査が必要です。セキュリティ確認なしに任意 host 許可へ広げないでください。
+GoFile が別 host model に変更した場合は、現行仕様を確認してから validation を変更してください。任意 host allow にしないでください。
 
 ---
 
-## 20. Test が動かない
+## 20. Save folder の文字が置換される
 
-### Python dependency
+GoFile-derived path segment は path traversal / invalid filename 対策で sanitize します。
 
-```bash
-python -m pip install -r requirements.txt
-```
+例:
 
-### Python tests
+- `../`
+- slash / backslash
+- NUL / control chars
+- Windows reserved names
+- trailing dot / space
+
+user-selected save root 自体は separator normalization 以上に勝手に sanitize しません。
+
+---
+
+## 21. Tray の Restart Helper が external Helper を止めない
+
+`Running (external)` の process は tray ownership 外です。
+
+tray は他 process を勝手に terminate しません。
+
+external Helper を自分で終了すると、tray monitor が Helper を起動できる状態になります。
+
+---
+
+## 22. 診断時に集める情報
+
+共有してよいもの:
+
+- OS
+- Python version
+- browser / Userscript manager
+- ABDM version
+- error code / HTTP status
+- problem step
+- sanitized log excerpt
+
+共有しないもの:
+
+- password
+- Cookie
+- Authorization header
+- guest token
+- Website Token
+- direct/signed download URL
+- private share URL
+
+---
+
+## 23. Developer checks
 
 ```bash
 python -m unittest discover -s tests -v
-```
-
-### Node tests
-
-```bash
 node --test tests/test_userscript.cjs
-```
-
-### Syntax
-
-```bash
 python -m py_compile app.py gofile.py abdm.py tray.py
 node --check gofile-abdm.user.js
 ```
 
-`tests/test_core.py` は Flask が import できない環境では一部 Flask test を skip する設計ですが、`requests` など主要 dependency がない場合は import 自体が成立しないことがあります。release 判定では dependency を入れた環境で全 test を実行してください。
+CI はありません。release 前に実行結果と未実施項目を区別してください。
 
----
-
-## 21. 問題報告前チェック
-
-- [ ] `VERSION`
-- [ ] commit SHA
-- [ ] OS
-- [ ] Python version
-- [ ] Userscript manager / version
-- [ ] ABDM version
-- [ ] Helper `/health`
-- [ ] ABDM Connected / Offline
-- [ ] 操作モード（Send Flat / structure）
-- [ ] error code / HTTP status
-- [ ] `helper.log` の秘密情報確認済み抜粋
-- [ ] 再現手順
-
-private password、Cookie、token、Authorization、direct URL、署名付き URL は貼らないでください。
+詳細な internal design は [`../DEVELOPMENT.md`](../DEVELOPMENT.md) と [`ARCHITECTURE.md`](ARCHITECTURE.md) を参照してください。
