@@ -618,6 +618,17 @@ _WINDOWS_RESERVED = {
 }
 
 
+def _truncate_segment(value: str, max_length: int = 240) -> str:
+    """Truncate a path segment while preserving a normal filename extension."""
+    if len(value) <= max_length:
+        return value
+    stem, ext = os.path.splitext(value)
+    if stem and ext and len(ext) <= 32:
+        budget = max(1, max_length - len(ext))
+        return f"{stem[:budget]}{ext}"
+    return value[:max_length]
+
+
 def sanitize_segment(value: str) -> str:
     """Sanitize a GoFile-derived path segment for Windows and Unix targets."""
     if not isinstance(value, str):
@@ -631,7 +642,7 @@ def sanitize_segment(value: str) -> str:
     stem = value.split(".", 1)[0].upper()
     if stem in _WINDOWS_RESERVED:
         value = "_" + value
-    return value[:240]
+    return _truncate_segment(value)
 
 
 def _append_segment_suffix(value: str, suffix: str) -> str:
