@@ -74,6 +74,10 @@ class ABDMClient:
             value = "//" + re.sub(r"/+", "/", value[2:])
         else:
             value = re.sub(r"/+", "/", value)
+        # Preserve POSIX and Windows drive roots. "C:" and "C:/" have different
+        # semantics on Windows, so a user-selected drive root must keep its slash.
+        if value == "/" or re.fullmatch(r"[A-Za-z]:/", value):
+            return value
         # Do not reinterpret, expand, or sanitize the user-selected root. Only
         # trim trailing separators so sanitized GoFile subpaths can be appended.
         while len(value) > 1 and value.endswith("/"):
@@ -90,8 +94,8 @@ class ABDMClient:
         relative = sanitize_relative_path(relative_folder)
         if not relative:
             return root
-        if root == "/":
-            return f"/{relative}"
+        if root == "/" or re.fullmatch(r"[A-Za-z]:/", root):
+            return f"{root}{relative}"
         return f"{root}/{relative}"
 
     def send(
