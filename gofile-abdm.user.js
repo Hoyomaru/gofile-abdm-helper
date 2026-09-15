@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         GoFile ABDM Helper
 // @namespace    https://github.com/Hoyomaru/gofile-abdm-helper
-// @version      1.0.0
+// @version      1.1.0
 // @description  Select GoFile files/folders on gofile.io and send them to AB Download Manager through a localhost helper.
 // @homepageURL  https://github.com/Hoyomaru/gofile-abdm-helper
 // @supportURL   https://github.com/Hoyomaru/gofile-abdm-helper/issues
