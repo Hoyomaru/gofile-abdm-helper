@@ -31,6 +31,6 @@ jobs:
         with:
           node-version: '22'
       - name: Run userscript tests
-        run: node --test tests/test_userscript.cjs
+        run: node --test tests/*.cjs
       - name: Check userscript syntax
         run: node --check gofile-abdm.user.js
