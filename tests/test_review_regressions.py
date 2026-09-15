@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from abdm import ABDMClient
-from gofile import GoFileClient, WebsiteTokenRejected
+from gofile import GoFileClient, WebsiteTokenRejected, sanitize_segment
 
 
 class WebsiteTokenRetryRegressionTests(unittest.TestCase):
@@ -80,6 +80,11 @@ class WindowsDriveRootRegressionTests(unittest.TestCase):
 
 
 class SanitizedCollisionRegressionTests(unittest.TestCase):
+    def test_long_filename_preserves_extension(self):
+        result = sanitize_segment("a" * 250 + ".mkv")
+        self.assertEqual(len(result), 240)
+        self.assertTrue(result.endswith(".mkv"))
+
     def test_colliding_file_names_get_unique_safe_names(self):
         client = GoFileClient(session=Mock())
         client.token = "guest-token"
