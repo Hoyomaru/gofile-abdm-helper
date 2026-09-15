@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import subprocess
 import sys
@@ -23,12 +24,14 @@ APP_NAME = "GoFile ABDM Helper"
 RUN_VALUE_NAME = "GoFileABDMHelper"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 HEALTH_URL = "http://127.0.0.1:8765/health"
+HEALTH_SERVICE_NAME = "gofile-abdm-helper"
 BASE_DIR = Path(__file__).resolve().parent
 APP_PATH = BASE_DIR / "app.py"
 LOG_PATH = BASE_DIR / "helper.log"
 LOG_OLD_PATH = BASE_DIR / "helper.log.1"
 MAX_LOG_BYTES = 2 * 1024 * 1024
 CHECK_INTERVAL_SECONDS = 3
+HEALTH_FAILURE_RESTART_THRESHOLD = 4
 MUTEX_NAME = "Local\\GoFileABDMHelperTray"
 ERROR_ALREADY_EXISTS = 183
 
@@ -92,8 +95,15 @@ def _toggle_startup(_icon: pystray.Icon, _item: pystray.MenuItem) -> None:
 def _health_ok(timeout: float = 0.7) -> bool:
     try:
         with urllib.request.urlopen(HEALTH_URL, timeout=timeout) as response:
-            return response.status == 200
-    except (urllib.error.URLError, TimeoutError, OSError):
+            if response.status != 200:
+                return False
+            payload = json.load(response)
+            return (
+                isinstance(payload, dict)
+                and payload.get("ok") is True
+                and payload.get("service") == HEALTH_SERVICE_NAME
+            )
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, TypeError):
         return False
 
 
@@ -220,18 +230,33 @@ def _exit(icon: pystray.Icon, _item: pystray.MenuItem) -> None:
 
 
 def _monitor() -> None:
+    consecutive_owned_health_failures = 0
     while not _stopping.wait(CHECK_INTERVAL_SECONDS):
         alive = _health_ok()
         proc_alive = _helper_process is not None and _helper_process.poll() is None
 
         if alive:
+            consecutive_owned_health_failures = 0
             _set_status("Running" if proc_alive else "Running (external)")
             continue
 
         if proc_alive:
-            _set_status("Starting")
+            consecutive_owned_health_failures += 1
+            if consecutive_owned_health_failures < HEALTH_FAILURE_RESTART_THRESHOLD:
+                _set_status("Starting")
+                continue
+
+            # A process can stay alive while Flask is permanently unresponsive.
+            # Restart only after several failed probes so normal startup or a
+            # short busy period does not cause a premature restart loop.
+            consecutive_owned_health_failures = 0
+            _set_status("Restarting")
+            _stop_owned_helper()
+            time.sleep(0.4)
+            _start_helper()
             continue
 
+        consecutive_owned_health_failures = 0
         _set_status("Stopped")
         _start_helper()
 
