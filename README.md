@@ -36,13 +36,16 @@ AB Download Manager (127.0.0.1:15151)
 - **Send Flat**: GoFile folder structure を無視して登録
 - ABDM queue 選択
 - Save folder と preset
-- file 単位の送信結果
-- **Retry Failed**
+- file 単位の送信結果と error detail
+- **Retry Failed** / **Cancel Send**
+- ABDM POST の結果不明時を `Uncertain` として分離し、blind retry を防止
+- `resolve_id` expiry 時の content ID ベース再 resolve / 残り送信再開
 - GoFile guest session / dynamic Website Token
 - 20分の resolve cache
 - recursive resolve の直列化と request pacing
-- Windows tray / Helper 自動監視
+- Windows tray / Helper 自動監視・hung process recovery
 - Windows user login 時の自動起動
+- GitHub Actions による Python / Userscript regression test
 
 ### このツールが解決する問題
 
@@ -60,7 +63,7 @@ GoFile の Web UI で表示している file / folder を、AB Download Manager 
 
 開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、これらは正式な公開 Release ではありません。利用者向けの正式リリース履歴は `v1.0.0` から開始します。
 
-`v1.0.0` 公開後の `main` には README などの documentation-only change が入る場合があります。**公開版そのものを再現したい場合は `v1.0.0` tag / Release の source archive を使用してください。**
+`v1.0.0` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.0.0` tag / Release の source archive を使用してください。**
 
 ---
 
@@ -119,6 +122,9 @@ POST /start-headless-download
 
 ```text
 project/
+├─ .github/
+│  └─ workflows/
+│     └─ tests.yml              # GitHub Actions regression tests
 ├─ gofile-abdm.user.js           # Browser UI / selection / send
 ├─ app.py                        # localhost Flask Helper
 ├─ gofile.py                     # GoFile API / recursive resolve
@@ -139,7 +145,11 @@ project/
 │  └─ TROUBLESHOOTING.md
 └─ tests/
    ├─ test_core.py
-   └─ test_userscript.cjs
+   ├─ test_review_regressions.py
+   ├─ test_send_regressions.py
+   ├─ test_tray_source.py
+   ├─ test_userscript.cjs
+   └─ test_send_userscript.cjs
 ```
 
 `templates/` / `static/` は使用しません。
@@ -325,9 +335,12 @@ https://gofile.io/d/xxxxxxxx
    - **Send to ABDM**: structure 保持
    - **Send Flat**: structure を無視
 9. ABDM への登録進捗を確認
-10. 一部失敗時は結果を確認し、必要なら **Retry Failed**
+10. 一部失敗時は結果の file-level error を確認し、必要なら **Retry Failed**
+11. 送信を止める必要がある場合は **Cancel Send**
 
 表示される progress は **ABDM への task 登録進捗**です。実際の download % / speed / ETA ではありません。
+
+`Uncertain` と表示された item は、ABDM が task を受け付けたか通信上確認できなかったものです。**通常の Retry Failed には含めません。ABDM の task list を確認してから手動で判断してください。**
 
 ---
 
@@ -477,6 +490,8 @@ User-Agent :: language :: guest-account-token :: 4-hour-window :: salt
 
 GoFile の実装が変わった場合は、現在の GoFile behavior を再確認してから更新してください。
 
+Website Token rejection の場合のみ前の 4-hour window を fallback として試します。通常の timeout retry では current window の token を維持します。
+
 ---
 
 # Rate limit / cache
@@ -497,12 +512,15 @@ Helper は GoFile API request を増幅させないようにしています。
 # 再開・復旧
 
 - **Helper crash:** tray mode なら health monitor が再起動を試みる
-- **Helper restart:** memory cache / guest token / resolve ID は失われる
+- **Helper hung:** tray が所有する process で health failure が連続した場合は再起動を試みる
+- **Helper restart / resolve expiry:** memory cache / guest token / resolve ID は失われるが、同一 page の active send 中は remaining content ID を保持して再 resolve / remap / resume を試みる
 - **Browser reload:** selection / resolve tree / hand-entered password state は失われる。GM settings は残る
 - **GoFile rate limit:** 自動 retry せず user が後で再試行
-- **ABDM individual send failure:** 残りを継続し `Retry Failed` 候補へ記録
+- **ABDM definite send failure:** 残りを継続し `Retry Failed` 候補へ記録
+- **ABDM uncertain POST:** `Uncertain` として分離し、通常の Retry Failed 対象にしない
+- **SPA navigation / Load:** active send operation を無効化して旧 page の残り loop を止める
 
-Userscript が持つ古い `resolve_id` は Helper 再起動後に無効になります。
+Cancel / navigation 時点で既に ABDM へ送信中だった **1件の in-flight request** は、通信を止めても ABDM が受け付け済みの可能性があります。そのため cancel 後の即時 blind retry は避けてください。
 
 ---
 
@@ -527,9 +545,8 @@ localhost service を LAN 公開したり、CORS を広げたり、generic URL p
 
 # 既知の制限・要検証事項
 
-- `resolve_id` expiry 後の自動再 resolve では、元 selection の保持と自動再送は保証していません
-- send 中の SPA navigation では旧 page の残り task 登録が続く可能性があります
-- ABDM POST の結果が network 上不明な場合、手動 `Retry Failed` で重複 task になる可能性があります
+- Cancel / SPA navigation で active send loop は停止しますが、既に送信中だった1件の ABDM POST が受理済みかどうかを browser 側から確定できない場合があります
+- Userscript → Helper の送信は安全な cancellation boundary を維持するため通常1 file / request で、大きな batch send は行いません
 - `helper.log` の 2 MiB rotation は Helper 起動時判定で、稼働中常時 rotation ではありません
 - Save folder が空の structure mode では、ABDM の unknown default folder に relative subfolder だけを確実に追加できません
 - GoFile / ABDM の外部仕様変更により互換性が壊れる可能性があります
@@ -562,7 +579,7 @@ python -m unittest discover -s tests -v
 Userscript tests:
 
 ```bash
-node --test tests/test_userscript.cjs
+node --test tests/*.cjs
 ```
 
 syntax checks:
@@ -572,7 +589,7 @@ python -m py_compile app.py gofile.py abdm.py tray.py
 node --check gofile-abdm.user.js
 ```
 
-現在 CI / GitHub Actions はありません。実行した test / smoke test と未実施項目を release ごとに区別してください。
+GitHub Actions の `Tests` workflow でも、push / pull request 時に同じ Python / Userscript regression test と syntax check を実行します。実機 E2E は CI では代替できないため、release 前には別途確認してください。
 
 ---
 

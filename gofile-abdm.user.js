@@ -39,12 +39,16 @@
     selectedKeys: new Set(),
     provisionalSelectedIds: new Set(),
     failedFileKeys: [],
+    failedResults: [],
+    uncertainResults: [],
     lastSendPreserveStructure: true,
     lastSendQueueId: null,
     passwordHashes: new Map(),
     resolveGeneration: 0,
     activeResolve: null,
     cancelPasswordPrompt: null,
+    sendGeneration: 0,
+    activeSend: null,
     resolving: false,
     sending: false,
     connected: false,
@@ -162,7 +166,7 @@
       .gab-btn-primary { background:color-mix(in srgb,#3b82f6 20%,transparent); border-color:color-mix(in srgb,#3b82f6 45%,transparent); }
       .gab-input, .gab-select { width:100%; box-sizing:border-box; border:1px solid color-mix(in srgb,currentColor 18%,transparent); border-radius:.5rem; padding:.5rem .6rem; background:color-mix(in srgb,currentColor 4%,transparent); color:inherit; font:inherit; }
       .gab-modal-backdrop { position:fixed; inset:0; z-index:2147483640; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:1rem; }
-      .gab-modal-card { width:min(620px,96vw); max-height:88vh; overflow:auto; border-radius:.8rem; padding:1rem; background:var(--color-slate-900,#111827); color:var(--color-slate-100,#f3f4f6); box-shadow:0 18px 60px rgba(0,0,0,.45); border:1px solid rgba(148,163,184,.25); }
+      .gab-modal-card { width:min(680px,96vw); max-height:88vh; overflow:auto; border-radius:.8rem; padding:1rem; background:var(--color-slate-900,#111827); color:var(--color-slate-100,#f3f4f6); box-shadow:0 18px 60px rgba(0,0,0,.45); border:1px solid rgba(148,163,184,.25); }
       .gab-modal-card.gab-dark { background:#111827; color:#f3f4f6; }
       .gab-modal-card.gab-light { background:#fff; color:#111827; }
       .gab-modal-card h3 { margin:0 0 .8rem; font-size:1rem; }
@@ -175,6 +179,9 @@
       .gab-tree-row { display:flex; align-items:center; gap:.45rem; min-height:1.85rem; font-size:.86rem; }
       .gab-tree-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .gab-tree-size { margin-left:auto; opacity:.65; font-variant-numeric:tabular-nums; }
+      .gab-result-list { max-height:260px; overflow:auto; margin:.45rem 0 .8rem; border:1px solid rgba(148,163,184,.22); border-radius:.55rem; padding:.4rem .55rem; }
+      .gab-result-row { padding:.28rem 0; border-bottom:1px solid rgba(148,163,184,.14); font-size:.82rem; }
+      .gab-result-row:last-child { border-bottom:0; }
       .gab-toast { position:fixed; right:1rem; bottom:1rem; z-index:2147483647; max-width:min(460px,90vw); padding:.7rem .85rem; border-radius:.6rem; background:#111827; color:white; border:1px solid rgba(255,255,255,.15); box-shadow:0 10px 35px rgba(0,0,0,.35); opacity:0; transform:translateY(8px); transition:.2s ease; }
       .gab-toast.show { opacity:1; transform:none; }
       .gab-toast-success { border-color:rgba(34,197,94,.55); }
@@ -211,6 +218,8 @@
         <span id="gab-status" class="gab-status"><span class="gab-status-dot"></span>ABDM Offline</span>
         ${button('Items', 'gab-items')}
         ${button('⚙', 'gab-settings')}
+        ${button('Retry Failed', 'gab-retry-failed-toolbar')}
+        ${button('Cancel Send', 'gab-cancel-send')}
         ${button('Send Flat', 'gab-send-flat')}
         ${button('Send to ABDM', 'gab-send', true)}
       </div>
@@ -234,12 +243,15 @@
     document.getElementById('gab-clear').addEventListener('click', clearSelection);
     document.getElementById('gab-settings').addEventListener('click', () => openSettings());
     document.getElementById('gab-items').addEventListener('click', openSelectionTree);
+    document.getElementById('gab-retry-failed-toolbar').addEventListener('click', () => sendSelected(true));
+    document.getElementById('gab-cancel-send').addEventListener('click', cancelSend);
     document.getElementById('gab-send-flat').addEventListener('click', () => sendSelected(false, false));
     document.getElementById('gab-send').addEventListener('click', () => sendSelected(false, true));
     document.getElementById('gab-load').addEventListener('click', () => {
       const value = document.getElementById('gab-url').value.trim();
       const nextSource = value || window.location.href;
       const sameSource = nextSource === state.sourceUrl;
+      if (state.sending) invalidateSend('load', true);
       if (!sameSource) {
         state.passwordHashes.clear();
         state.provisionalSelectedIds.clear();
@@ -290,9 +302,6 @@
     const fmRoot = document.querySelector('#fm-root');
     if (!fmRoot || !state.root) return Array.isArray(state.topLevel) ? state.topLevel : [];
 
-    // Prefer stable GoFile content IDs when the current DOM exposes them. Older
-    // and newer GoFile layouts have used different data-* names, so support the
-    // known variants before falling back to filename text matching.
     const visibleIds = visibleContentIds(fmRoot);
     if (visibleIds.size) {
       let bestById = null;
@@ -350,6 +359,26 @@
     return [...keys];
   }
 
+  function fileIdsForKeys(keys) {
+    const ids = [];
+    for (const key of keys) {
+      const node = state.nodeByKey.get(key);
+      if (node?.type === 'file' && node.id) ids.push(node.id);
+    }
+    return ids;
+  }
+
+  function fileKeyForContentId(contentId) {
+    for (const node of state.nodeByKey.values()) {
+      if (node?.type === 'file' && node.id === contentId) return node.key;
+    }
+    return null;
+  }
+
+  function remapFileIdsToKeys(contentIds) {
+    return contentIds.map((contentId) => ({ contentId, key: fileKeyForContentId(contentId) }));
+  }
+
   function selectedStats() {
     const files = selectedFileKeys();
     let total = 0;
@@ -379,9 +408,18 @@
       send.disabled = state.sending || state.resolving || stats.count === 0;
       send.textContent = 'Send to ABDM';
     }
-    if (sendFlat) {
-      sendFlat.disabled = state.sending || state.resolving || stats.count === 0;
+    if (sendFlat) sendFlat.disabled = state.sending || state.resolving || stats.count === 0;
+
+    const retry = toolbar.querySelector('#gab-retry-failed-toolbar');
+    if (retry) {
+      retry.classList.toggle('gab-hidden', state.failedResults.length === 0);
+      retry.disabled = state.sending || state.resolving || state.failedResults.length === 0;
+      retry.textContent = `Retry Failed (${state.failedResults.length})`;
     }
+
+    const cancel = toolbar.querySelector('#gab-cancel-send');
+    if (cancel) cancel.classList.toggle('gab-hidden', !state.sending);
+
     const items = toolbar.querySelector('#gab-items');
     if (items) items.classList.remove('gab-hidden');
     syncInjectedCheckboxes();
@@ -468,6 +506,34 @@
     cancelPrompt?.();
   }
 
+  function isCurrentSend(operation) {
+    return state.activeSend === operation &&
+      state.sendGeneration === operation.generation &&
+      state.sourceUrl === operation.sourceUrl &&
+      !operation.cancelled;
+  }
+
+  function invalidateSend(reason = 'cancelled', notify = false) {
+    const operation = state.activeSend;
+    state.sendGeneration += 1;
+    if (operation) {
+      operation.cancelled = true;
+      operation.cancelReason = reason;
+    }
+    state.activeSend = null;
+    state.sending = false;
+    if (notify && operation) {
+      setProgress(0, 0, 'Send cancelled. An in-flight ABDM request may still have been accepted.', true);
+      toast('Send cancelled. Check ABDM before retrying the in-flight item.', 'warning');
+    }
+    updateToolbar();
+  }
+
+  function cancelSend() {
+    if (!state.sending) return;
+    invalidateSend('user', true);
+  }
+
   function resetResolution(preserveProvisional = false) {
     state.resolveId = null;
     state.root = null;
@@ -476,7 +542,11 @@
     state.nodeByKey.clear();
     state.selectedKeys.clear();
     if (!preserveProvisional) state.provisionalSelectedIds.clear();
-    state.failedFileKeys = [];
+    if (!state.sending) {
+      state.failedFileKeys = [];
+      state.failedResults = [];
+      state.uncertainResults = [];
+    }
     document.querySelectorAll(`.${CHECKBOX_CLASS}`).forEach((el) => el.closest('.gab-check-wrap')?.remove());
     updateToolbar();
   }
@@ -752,6 +822,8 @@
     state.selectedKeys.clear();
     state.provisionalSelectedIds.clear();
     state.failedFileKeys = [];
+    state.failedResults = [];
+    state.uncertainResults = [];
     updateToolbar();
   }
 
@@ -1042,8 +1114,38 @@
     });
   }
 
+  function resultEntry(contentId, key, node, error, uncertain = false) {
+    return {
+      id: contentId,
+      key,
+      name: node?.name || contentId,
+      error: error || (uncertain ? 'ABDM did not confirm whether the task was accepted.' : 'Unknown error.'),
+      uncertain,
+    };
+  }
+
+  function renderResultList(title, entries, warning = false) {
+    if (!entries.length) return '';
+    const shown = entries.slice(0, 50);
+    const rows = shown.map((entry) => `
+      <div class="gab-result-row">
+        <strong>${escapeHtml(entry.name)}</strong><br>
+        <span class="gab-muted">${escapeHtml(entry.error)}</span>
+      </div>
+    `).join('');
+    const remaining = entries.length - shown.length;
+    return `
+      <div class="gab-field">
+        <strong>${escapeHtml(title)} (${entries.length})</strong>
+        ${warning ? '<div class="gab-muted">Do not retry these automatically. Check ABDM first because the task may already exist.</div>' : ''}
+        <div class="gab-result-list">${rows}${remaining > 0 ? `<div class="gab-result-row">…and ${remaining} more</div>` : ''}</div>
+      </div>
+    `;
+  }
+
   async function sendSelected(retryOnly, preserveStructure = true) {
     if (state.sending) return;
+
     let queueId;
     if (retryOnly) {
       preserveStructure = state.lastSendPreserveStructure;
@@ -1053,62 +1155,130 @@
       queueId = getSelectedQueueId();
       state.lastSendQueueId = queueId;
     }
+
     if (!retryOnly && !state.resolveId && state.provisionalSelectedIds.size) {
       await resolveContent(true);
       if (!state.resolveId && state.provisionalSelectedIds.size) {
         return toast('Selection kept. GoFile resolve is still unavailable; try Send again later.', 'warning');
       }
     }
-    let keys = retryOnly ? [...state.failedFileKeys] : selectedFileKeys();
-    if (!keys.length) return toast(retryOnly ? 'No failed items to retry.' : 'No files selected.', 'warning');
+
+    const initialSourceUrl = state.sourceUrl;
+    const initialKeys = retryOnly ? state.failedResults.map((item) => item.key).filter(Boolean) : selectedFileKeys();
+    let pendingIds = retryOnly
+      ? state.failedResults.map((item) => item.id).filter(Boolean)
+      : fileIdsForKeys(initialKeys);
+
+    if (!pendingIds.length) return toast(retryOnly ? 'No failed items to retry.' : 'No files selected.', 'warning');
     if (!state.resolveId) return toast('GoFile content could not be resolved yet.', 'warning');
 
     const connected = await checkABDM();
     if (!connected) return toast('AB Download Manager is offline.', 'error');
+    if (state.sourceUrl !== initialSourceUrl) return toast('Page changed before sending started.', 'warning');
 
+    const operation = {
+      generation: state.sendGeneration + 1,
+      sourceUrl: initialSourceUrl,
+      resolveId: state.resolveId,
+      preserveStructure,
+      queueId,
+      saveRoot: GM_getValue(STORAGE.lastSaveFolder, ''),
+      success: 0,
+      failed: [],
+      uncertain: [],
+      cancelled: false,
+      cancelReason: null,
+    };
+    state.sendGeneration = operation.generation;
+    state.activeSend = operation;
     state.sending = true;
     state.failedFileKeys = [];
+    state.failedResults = [];
+    state.uncertainResults = [];
     updateToolbar();
-    const saveRoot = GM_getValue(STORAGE.lastSaveFolder, '');
-    let success = 0;
-    const failed = [];
 
-    for (let index = 0; index < keys.length; index += 1) {
-      const key = keys[index];
-      const node = state.nodeByKey.get(key);
-      setProgress(index, keys.length, node?.name || '');
+    let index = 0;
+    while (index < pendingIds.length && isCurrentSend(operation)) {
+      const contentId = pendingIds[index];
+      const key = fileKeyForContentId(contentId);
+      const node = key ? state.nodeByKey.get(key) : null;
+      if (!key || !node) {
+        operation.failed.push(resultEntry(contentId, key, node, 'File could not be mapped after resolving.'));
+        index += 1;
+        continue;
+      }
+
+      setProgress(index, pendingIds.length, node.name || '');
       try {
         const data = await gmRequest('POST', '/api/abdm/send', {
-          resolve_id: state.resolveId,
+          resolve_id: operation.resolveId,
           file_keys: [key],
-          save_root: saveRoot,
-          preserve_structure: preserveStructure,
-          queue_id: queueId,
+          save_root: operation.saveRoot,
+          preserve_structure: operation.preserveStructure,
+          queue_id: operation.queueId,
         }, 30000);
+
+        if (!isCurrentSend(operation)) return;
         const result = data.results?.[0];
-        if (result?.ok) success += 1;
-        else failed.push(key);
-      } catch (error) {
-        if (error.code === 'resolve_expired') {
-          toast('Resolved GoFile session expired. Reloading content…', 'warning');
-          state.sending = false;
-          await resolveContent();
-          return;
+        if (result?.ok) {
+          operation.success += 1;
+        } else if (result?.uncertain) {
+          operation.uncertain.push(resultEntry(contentId, key, node, result.error, true));
+        } else {
+          operation.failed.push(resultEntry(contentId, key, node, result?.error));
         }
-        failed.push(key);
+      } catch (error) {
+        if (!isCurrentSend(operation)) return;
+        if (error.code === 'resolve_expired') {
+          toast('Resolved GoFile session expired. Re-resolving and preserving the remaining selection…', 'warning');
+          const remainingIds = pendingIds.slice(index);
+          const resolved = await resolveContent(true);
+          if (!isCurrentSend(operation)) return;
+          if (!resolved || !state.resolveId) {
+            for (const remainingId of remainingIds) {
+              const remainingKey = fileKeyForContentId(remainingId);
+              const remainingNode = remainingKey ? state.nodeByKey.get(remainingKey) : null;
+              operation.failed.push(resultEntry(remainingId, remainingKey, remainingNode, 'Could not re-resolve GoFile content.'));
+            }
+            break;
+          }
+          operation.resolveId = state.resolveId;
+          pendingIds = remainingIds;
+          index = 0;
+          continue;
+        }
+        if (['helper_timeout', 'helper_offline', 'helper_aborted'].includes(error.code)) {
+          operation.uncertain.push(resultEntry(contentId, key, node, error.message, true));
+        } else {
+          operation.failed.push(resultEntry(contentId, key, node, error.message));
+        }
       }
-      setProgress(index + 1, keys.length, node?.name || '');
+
+      index += 1;
+      setProgress(index, pendingIds.length, node.name || '');
     }
 
-    state.failedFileKeys = failed;
+    if (!isCurrentSend(operation)) return;
+    state.activeSend = null;
     state.sending = false;
+    state.failedResults = operation.failed;
+    state.uncertainResults = operation.uncertain;
+    state.failedFileKeys = operation.failed.map((item) => item.key).filter(Boolean);
     updateToolbar();
-    showSendResult(success, failed.length);
+    showSendResult(operation.success, operation.failed, operation.uncertain);
   }
 
-  function showSendResult(success, failed) {
+  function showSendResult(success, failedResults, uncertainResults) {
+    const failed = failedResults.length;
+    const uncertain = uncertainResults.length;
     openModal('Sent to ABDM', `
-      <div class="gab-field">Success <strong>${success}</strong><br>Failed <strong>${failed}</strong></div>
+      <div class="gab-field">
+        Success <strong>${success}</strong><br>
+        Failed <strong>${failed}</strong><br>
+        Uncertain <strong>${uncertain}</strong>
+      </div>
+      ${renderResultList('Failed', failedResults)}
+      ${renderResultList('Uncertain', uncertainResults, true)}
       <div class="gab-actions">
         ${failed ? button('Retry Failed', 'gab-retry-failed', true) : ''}
         ${button('Close', 'gab-result-close')}
@@ -1118,7 +1288,13 @@
       const retry = card.querySelector('#gab-retry-failed');
       if (retry) retry.addEventListener('click', () => { backdrop.remove(); sendSelected(true); });
     });
-    toast(failed ? `Sent ${success}; ${failed} failed.` : `Sent ${success} file(s) to ABDM.`, failed ? 'warning' : 'success');
+    const type = failed || uncertain ? 'warning' : 'success';
+    toast(
+      uncertain
+        ? `Sent ${success}; ${failed} failed; ${uncertain} uncertain. Check ABDM before retrying uncertain items.`
+        : failed ? `Sent ${success}; ${failed} failed.` : `Sent ${success} file(s) to ABDM.`,
+      type,
+    );
   }
 
   function scheduleDomRefresh() {
@@ -1135,6 +1311,7 @@
       const current = window.location.href;
       if (current === state.lastUrl) return;
       state.lastUrl = current;
+      invalidateSend('navigation', false);
       invalidateResolve();
       closeModal();
       state.sourceUrl = current;
@@ -1196,6 +1373,11 @@
       runResolveOperation,
       promptPassword,
       invalidateResolve,
+      isCurrentSend,
+      invalidateSend,
+      fileIdsForKeys,
+      fileKeyForContentId,
+      remapFileIdsToKeys,
       openModal,
       closeModal,
     };

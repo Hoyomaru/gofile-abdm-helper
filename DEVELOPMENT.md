@@ -16,7 +16,7 @@
 
 ## 1. 現在の状態
 
-基準日: **2026-09-14**
+基準日: **2026-09-15**
 
 - repository: `Hoyomaru/gofile-abdm-helper`
 - default branch: `main`
@@ -25,11 +25,11 @@
 - `v1.0.0`: **2026-09-14 に公開済み**の初回正式リリース
 - `v1.0.0` tag target: `e4fcf3a2ce0cee18f9320a9ff5df683acf78912a`
 - GitHub Release title: `GoFile ABDM Helper v1.0.0`
-- GitHub Actions / CI: 未導入
+- GitHub Actions / CI: `.github/workflows/tests.yml` を導入済み
 - 専用 build / binary artifact: なし
 - custom Release asset: なし。GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を利用可能
 
-`v1.0.0` 公開後の `main` には documentation-only change が入っており、これらは `CHANGELOG.md` の `[Unreleased]` で管理します。公開済み `v1.0.0` tag は移動しません。
+`v1.0.0` 公開後の `main` には次回 Release 向けの code / test / documentation change が入り、`CHANGELOG.md` の `[Unreleased]` で管理します。公開済み `v1.0.0` tag は移動しません。
 
 ### 過去の version 名について
 
@@ -43,19 +43,24 @@
 
 現行 repository には次があります。
 
-- Python tests: `tests/test_core.py`
-- Userscript Node tests: `tests/test_userscript.cjs`
+- Python core tests: `tests/test_core.py`
+- review regression tests: `tests/test_review_regressions.py`
+- send / uncertain Helper tests: `tests/test_send_regressions.py`
+- tray source guards: `tests/test_tray_source.py`
+- Userscript password/state tests: `tests/test_userscript.cjs`
+- Userscript send-session tests: `tests/test_send_userscript.cjs`
+- GitHub Actions: `.github/workflows/tests.yml`
 
-開発途中の PR では Python test / syntax check の成功記録がありますが、**v1.0.0 公開時に実機 E2E を新たに実行したとは記録しません**。
-
-今後のリリース前に推奨する確認:
+CI は push / pull request で次を実行します。
 
 ```bash
 python -m unittest discover -s tests -v
-node --test tests/test_userscript.cjs
+node --test tests/*.cjs
 python -m py_compile app.py gofile.py abdm.py tray.py
 node --check gofile-abdm.user.js
 ```
+
+**v1.0.0 公開時に実機 E2E を新たに実行したとは記録しません。** CI も実サービス / browser / ABDM 実機 E2E の代替ではありません。
 
 未確認として扱うもの:
 
@@ -63,6 +68,7 @@ node --check gofile-abdm.user.js
 - Violentmonkey / Tampermonkey 双方での網羅確認
 - 各 Userscript manager での GoFile `sessionStorage` 補助経路
 - 現在の ABDM で実 download 完了までの E2E
+- Windows tray の hung-process recovery を含む実機長時間確認
 - Linux/macOS の網羅実機確認
 
 ---
@@ -93,12 +99,17 @@ Helper 自身は file body を download /保存しません。
 |---|---|
 | `gofile-abdm.user.js` | GoFile UI 統合、selection、settings、resolve/send、password prompt |
 | `app.py` | localhost Flask API、validation、cache、resolve serialization、ABDM 仲介 |
-| `gofile.py` | GoFile guest session、Website Token、recursive resolve、path sanitize |
-| `abdm.py` | ABDM `/queues` / `/start-headless-download` client |
-| `tray.py` | Windows tray、Helper monitor、自動起動、log |
+| `gofile.py` | GoFile guest session、Website Token、recursive resolve、path sanitize / collision disambiguation |
+| `abdm.py` | ABDM `/queues` / `/start-headless-download` client、uncertain POST 分類 |
+| `tray.py` | Windows tray、Helper monitor、自動起動、hung-process recovery、log |
 | `start-tray.cmd` | Windows tray launcher |
-| `tests/test_core.py` | Python regression tests |
-| `tests/test_userscript.cjs` | Userscript state / password regression tests |
+| `.github/workflows/tests.yml` | Python / Userscript CI |
+| `tests/test_core.py` | Python core regression tests |
+| `tests/test_review_regressions.py` | Website Token / Windows root / sanitize collision regression |
+| `tests/test_send_regressions.py` | Helper send / uncertain outcome regression |
+| `tests/test_tray_source.py` | Windows tray recovery source guard |
+| `tests/test_userscript.cjs` | Userscript resolve / password state regression |
+| `tests/test_send_userscript.cjs` | Userscript send generation / resume regression |
 | `VERSION` | repository release version |
 
 全体構造は [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) を参照してください。
@@ -116,11 +127,12 @@ Helper 自身は file body を download /保存しません。
 - `root`, `topLevel`, `currentLevel`, `nodeByKey`
 - `selectedKeys`
 - `provisionalSelectedIds`
-- `failedFileKeys`
+- `failedFileKeys`, `failedResults`, `uncertainResults`
 - `lastSendPreserveStructure`
 - `lastSendQueueId`
 - `passwordHashes`
 - `resolveGeneration`, `activeResolve`
+- `sendGeneration`, `activeSend`
 - `resolving`, `sending`
 
 ### resolve state
@@ -148,13 +160,30 @@ READY
 CHECK_ABDM
  ↓
 SENDING (normally one file per Helper request)
+ ├─ resolve_expired → remaining content IDs を保持 → RESOLVING → key remap → SENDING
+ ├─ navigation / Load / Cancel Send → send generation invalidate → CANCELED
  ↓
 RESULT
  ├─ success
- └─ failedFileKeys → Retry Failed
+ ├─ definite failure → failedResults → Retry Failed
+ └─ uncertain → uncertainResults → automatic retry 対象外
 ```
 
+`isCurrentSend()` は active operation / generation / source URL / cancelled flag を確認します。古い operation response は新しい page state を更新しません。
+
 send progress は ABDM への task registration progress です。
+
+### send batching 方針
+
+Helper API 自体は複数 `file_keys` を受けられますが、現行 Userscript は通常 **1 file / Helper request** を維持します。
+
+理由:
+
+- navigation / Cancel Send 後も、既に Helper が処理中の request 自体を browser から確実に取り消せない
+- 大きな batch にすると一度の in-flight request 内で複数 ABDM task が旧 page から継続し得る
+- ABDM POST は idempotency key を持たないため、結果不明時の retry blast radius を広げたくない
+
+batch 化は Helper-side cancellation / idempotency を設計してから再検討してください。
 
 ---
 
@@ -218,11 +247,19 @@ helper.log.1
 X-GoFile-ABDM: 1
 ```
 
-POST / PUT / PATCH は JSON 必須です。
+POST / PUT / PATCH は JSON 必須です。`POST /api/gofile/resolve` と `POST /api/abdm/send` は JSON **object** であることも検証します。
 
 ### `GET /health`
 
 tray health check。marker 不要。
+
+正常 payload:
+
+```json
+{"ok": true, "service": "gofile-abdm-helper"}
+```
+
+tray は HTTP 200 だけでなく `service` identity も確認し、別 process の `/health` を Helper と誤認しないようにします。
 
 ### `GET /api/abdm/status`
 
@@ -281,10 +318,17 @@ legacy compatibility として root 用 `password` plaintext も受け付けま�
 
 validation:
 
+- request body: JSON object
 - `file_keys`: max 1000
 - `save_root`: max 1000 chars, NUL forbidden
 - `queue_id`: integer / null
 - expired `resolve_id`: 410 `resolve_expired`
+
+各 result は `ok` と `uncertain` を分けます。
+
+- `ok: true`: ABDM が success response
+- `ok: false, uncertain: false`: definite failure
+- `ok: false, uncertain: true`: POST transport failure のため ABDM が task を受け付けたか断定不可
 
 現行 Userscript は通常1 fileずつ送ります。
 
@@ -313,6 +357,14 @@ sha256(User-Agent :: language :: guest-token :: 4-hour-window :: salt)
 - `GOFILE_USER_AGENT`
 - `GOFILE_LANGUAGE`
 - `GOFILE_REQUEST_INTERVAL`
+
+retry policy:
+
+- ordinary timeout: current 4-hour window の token のまま limited retry
+- `WebsiteTokenRejected`: previous 4-hour window を一度だけ fallback
+- previous window も reject: stop
+
+一般的な network timeout と time-window fallback を同じ retry counter に結び付けないでください。
 
 ### Rate limit
 
@@ -353,6 +405,8 @@ Default queue の場合は `queueId` を省略します。
 
 Save folder empty の場合は `folder` を省略します。
 
+POST の `requests.RequestException` は definite failure ではありません。ABDM が受理後に response が失われた可能性があるため `ABDMUncertainError` として扱います。
+
 ---
 
 ## 9. Path safety
@@ -367,8 +421,11 @@ GoFile-derived segment は `sanitize_segment()` / `sanitize_relative_path()` を
 - `.` / `..`
 - Windows reserved names
 - trailing dot / space
+- long filename の extension preservation
 
-user-selected `save_root` 自体は separator normalization 以上に勝手に変更しません。
+さらに、同一 folder 内で sanitize 後の target 名が case-insensitive に衝突する場合は content ID 由来の stable suffix で deterministic に disambiguate します。folder segment collision も同様に処理します。
+
+user-selected `save_root` 自体は separator normalization 以上に勝手に変更しません。Windows drive root `C:\` / `C:/` は `C:/` として root semantics を維持します。
 
 ---
 
@@ -377,15 +434,17 @@ user-selected `save_root` 自体は separator normalization 以上に勝手に�
 | 条件 | 現在の処理 |
 |---|---|
 | GoFile guest token temporary error | limited retry |
-| GoFile content timeout | limited retry |
-| Website Token rejection | adjacent time window を試す経路あり |
+| GoFile content timeout | current Website Token window のまま limited retry |
+| Website Token rejection | previous time window を一度だけ fallback |
 | HTTP/API 429 | **retry せず stop** |
 | password required/wrong | user challenge → same root re-resolve |
 | access denied | stop |
-| ABDM individual failure | remaining files continue |
-| ABDM ambiguous POST result | automatic blind retry しない |
+| `resolve_expired` during send | remaining content IDs を保持 → re-resolve → key remap → resume |
+| ABDM definite individual failure | remaining files continue / Retry Failed candidate |
+| ABDM ambiguous POST result | `uncertain` として分離 / automatic blind retry しない |
+| send 中 navigation / manual Load | active send を invalidate / old loop stop |
 
-`Retry Failed` は user action です。
+`Retry Failed` は definite failure に対する user action です。`uncertain` は含めません。
 
 ---
 
@@ -398,11 +457,12 @@ user-selected `save_root` 自体は separator normalization 以上に勝手に�
 5. mutation request の JSON guard を弱めない。
 6. GoFile URL / direct link host validation を弱めない。
 7. direct URL / Cookie / token / password を UI / log / error へ不用意に露出しない。
-8. GoFile-derived path sanitization を削除しない。
+8. GoFile-derived path sanitization と collision disambiguation を削除しない。
 9. 429 を blind retry して request を増幅させない。
 10. access-denied / password challenge の途中 tree を完成済み成功結果として cache / send しない。
-11. stale resolve response で新しい navigation state を上書きしない。
+11. stale resolve / send response で新しい navigation state を上書きしない。
 12. ABDM POST の結果不明時に automatic resend を追加しない。idempotency を設計してから行う。
+13. cancellation safety を犠牲にする大きな send batch を、Helper-side cancel / idempotency なしで追加しない。
 
 「便利だから」という理由だけでこれらを弱めないでください。
 
@@ -440,21 +500,43 @@ Cancel / Escape / background / replacement / navigation の全 close route で o
 
 resolve generation guard で navigation 後の stale response を無視。
 
+### Website Token timeout fallback coupling
+
+content request の timeout retry が previous 4-hour window を使ってしまう問題を分離し、Website Token rejection 時だけ previous window を試すよう修正。
+
+### Windows drive root
+
+`C:\` / `C:/` が `C:` へ縮退しないよう修正。
+
+### Sanitized path collisions
+
+異なる GoFile name が同じ sanitized target へ衝突する場合に stable suffix で分離。
+
+### Send operation recovery
+
+- send generation guard
+- navigation / manual Load / Cancel Send invalidation
+- `resolve_expired` の remaining content ID resume
+- uncertain POST の通常 Retry Failed からの分離
+- file-level failure detail / persistent Retry Failed
+
+### Tray hung Helper
+
+health 200 だけでなく service identity を確認し、owned process が alive のまま連続 health failure した場合に threshold 後 restart。
+
 ---
 
 ## 12. 現在の既知問題 / 要検証
 
-### `resolve_expired` 後の selection
+### In-flight ABDM POST
 
-410 を受けると再 resolve しますが、元 selection を必ず保持して自動再送する保証はありません。
+Cancel Send / SPA navigation で send loop は止めますが、その時点で既に送信中だった1件の ABDM POST が受理済みかどうかは browser 側から確定できない場合があります。
 
-### Send 中の SPA navigation
+そのため:
 
-resolve には generation guard がありますが send loop には同等の cancellation guard がありません。
-
-### ABDM ambiguous POST result
-
-ABDM 側で task 作成済みでも response を受け取れない場合、manual Retry Failed で duplicate になる可能性があります。
+- cancel 後の blind retry はしない
+- transport failure は `uncertain` に分離
+- 現行 Userscript は通常1 file / request を維持
 
 ### Log rotation
 
@@ -463,6 +545,10 @@ ABDM 側で task 作成済みでも response を受け取れない場合、manua
 ### Default folder + structure
 
 Save root が空の場合、ABDM の unknown default folder に relative subfolder だけを確実に追加する API contract は確認できません。
+
+### External E2E
+
+GoFile / ABDM は外部仕様なので、CI success だけで current service compatibility を保証しません。release 前に実機 smoke test が必要です。
 
 ---
 
@@ -475,6 +561,8 @@ Save root が空の場合、ABDM の unknown default folder に relative subfold
 - resolve cache
 - `resolve_id`
 - GoFile guest token
+
+active send 中に `resolve_expired` を受けた場合、Userscript は同一 page の remaining content ID を保持して再 resolve / key remap / resume を試みます。
 
 残るもの:
 
@@ -496,7 +584,11 @@ Save root が空の場合、ABDM の unknown default folder に relative subfold
 
 ### Tray
 
-tray が ownership を持つ Helper が死んだ場合は health monitor が restart を試みます。
+tray が ownership を持つ Helper が終了した場合は health monitor が restart を試みます。
+
+process が alive のまま health check が失敗する場合も、連続4回（default interval 3秒、約12秒）の失敗後に owned process を restart します。短い startup / busy interval で即 restart しないため threshold を設けています。
+
+health response は `service: gofile-abdm-helper` を要求します。
 
 外部 Helper は kill しません。
 
@@ -508,6 +600,12 @@ tray が ownership を持つ Helper が死んだ場合は health monitor が res
 
 ```text
 http://127.0.0.1:8765/health
+```
+
+期待値:
+
+```json
+{"ok": true, "service": "gofile-abdm-helper"}
 ```
 
 ### Logs
@@ -523,6 +621,7 @@ helper.log.1
 - Network
 - Userscript manager permission
 - toolbar status / progress
+- send result の Failed / Uncertain detail
 
 問題報告時に共有してよいもの:
 
@@ -551,10 +650,12 @@ helper.log.1
 
 - [ ] `VERSION` と Userscript `@version` が一致
 - [ ] CHANGELOG に release entry
+- [ ] GitHub Actions `Tests` workflow が green
 - [ ] Python tests
-- [ ] Userscript Node tests
+- [ ] Userscript Node tests (`node --test tests/*.cjs`)
 - [ ] Python syntax check
 - [ ] Userscript syntax check
+- [ ] GoFile / ABDM / Windows tray の必要な実機 smoke test
 - [ ] README / DEVELOPMENT / docs sync
 - [ ] secrets が混入していない
 - [ ] security invariants を維持

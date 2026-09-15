@@ -11,7 +11,7 @@ from typing import Dict, Optional
 
 from flask import Flask, jsonify, request
 
-from abdm import ABDMClient, ABDMError
+from abdm import ABDMClient, ABDMError, ABDMUncertainError
 from gofile import (
     ContentNotFound,
     ContentAccessDenied,
@@ -267,7 +267,9 @@ def gofile_resolve():
 
 @app.post("/api/abdm/send")
 def abdm_send():
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return _api_error("JSON object required.", "invalid_body", 400)
     resolve_id = body.get("resolve_id")
     file_keys = body.get("file_keys")
     save_root = body.get("save_root", "")
@@ -298,7 +300,7 @@ def abdm_send():
     for key in file_keys:
         item = resolved.files.get(key)
         if item is None:
-            results.append({"key": key, "ok": False, "error": "Unknown or stale file key."})
+            results.append({"key": key, "ok": False, "uncertain": False, "error": "Unknown or stale file key."})
             continue
         try:
             result = client.send(
@@ -312,18 +314,54 @@ def abdm_send():
                     "key": key,
                     "name": item.name,
                     "ok": result.ok,
+                    "uncertain": False,
                     "status": result.status_code,
                     "error": None if result.ok else result.message,
                 }
             )
+        except ABDMUncertainError as exc:
+            results.append(
+                {
+                    "key": key,
+                    "name": item.name,
+                    "ok": False,
+                    "uncertain": True,
+                    "error": str(exc),
+                }
+            )
         except ABDMError as exc:
-            results.append({"key": key, "name": item.name, "ok": False, "error": str(exc)})
+            results.append(
+                {
+                    "key": key,
+                    "name": item.name,
+                    "ok": False,
+                    "uncertain": False,
+                    "error": str(exc),
+                }
+            )
         except Exception:
-            results.append({"key": key, "name": item.name, "ok": False, "error": "Unexpected ABDM error."})
+            results.append(
+                {
+                    "key": key,
+                    "name": item.name,
+                    "ok": False,
+                    "uncertain": False,
+                    "error": "Unexpected ABDM error.",
+                }
+            )
 
     success = sum(1 for item in results if item.get("ok"))
-    failed = len(results) - success
-    return jsonify({"ok": True, "success": success, "failed": failed, "results": results})
+    uncertain = sum(1 for item in results if item.get("uncertain"))
+    failed = len(results) - success - uncertain
+    return jsonify(
+        {
+            "ok": True,
+            "success": success,
+            "failed": failed,
+            "uncertain": uncertain,
+            "results": results,
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -17,6 +17,10 @@ class ABDMError(RuntimeError):
     pass
 
 
+class ABDMUncertainError(ABDMError):
+    """ABDM may have accepted a POST even though no confirmation was received."""
+
+
 @dataclass
 class ABDMResult:
     ok: bool
@@ -74,6 +78,10 @@ class ABDMClient:
             value = "//" + re.sub(r"/+", "/", value[2:])
         else:
             value = re.sub(r"/+", "/", value)
+        # Preserve POSIX and Windows drive roots. "C:" and "C:/" have different
+        # semantics on Windows, so a user-selected drive root must keep its slash.
+        if value == "/" or re.fullmatch(r"[A-Za-z]:/", value):
+            return value
         # Do not reinterpret, expand, or sanitize the user-selected root. Only
         # trim trailing separators so sanitized GoFile subpaths can be appended.
         while len(value) > 1 and value.endswith("/"):
@@ -90,8 +98,8 @@ class ABDMClient:
         relative = sanitize_relative_path(relative_folder)
         if not relative:
             return root
-        if root == "/":
-            return f"/{relative}"
+        if root == "/" or re.fullmatch(r"[A-Za-z]:/", root):
+            return f"{root}{relative}"
         return f"{root}/{relative}"
 
     def send(
@@ -124,7 +132,12 @@ class ABDMClient:
                 timeout=ABDM_TIMEOUT,
             )
         except requests.RequestException as exc:
-            raise ABDMError("Could not connect to AB Download Manager.") from exc
+            # With a POST, a transport failure cannot prove that ABDM did not
+            # already accept the task. Keep this separate from a definite HTTP
+            # failure so callers do not blindly retry and create duplicates.
+            raise ABDMUncertainError(
+                "ABDM did not confirm whether the download task was accepted."
+            ) from exc
 
         if response.ok:
             return ABDMResult(True, response.status_code, "sent")

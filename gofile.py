@@ -365,39 +365,50 @@ class GoFileClient:
         content_id = parse_content_id(content_id)
         merged: Optional[Dict[str, Any]] = None
         page = 1
-        window_offsets = (0, -1)
 
         while True:
             payload: Optional[Dict[str, Any]] = None
             last_error: Optional[Exception] = None
-            for attempt in range(4):
-                window_offset = window_offsets[min(attempt, len(window_offsets) - 1)]
-                try:
-                    request_kwargs = {
-                        "password": password,
-                        "page": page,
-                        "window_offset": window_offset,
-                    }
-                    if password_hash is not None:
-                        request_kwargs["password_hash"] = password_hash
-                    payload = self._request_folder_page(content_id, **request_kwargs)
+
+            # A timeout is a transport problem and must not change the Website
+            # Token window. Only an explicit WebsiteTokenRejected response moves
+            # from the current window to the previous window, once.
+            for window_index, window_offset in enumerate((0, -1)):
+                token_rejected = False
+                for timeout_attempt in range(4):
+                    try:
+                        request_kwargs = {
+                            "password": password,
+                            "page": page,
+                            "window_offset": window_offset,
+                        }
+                        if password_hash is not None:
+                            request_kwargs["password_hash"] = password_hash
+                        payload = self._request_folder_page(content_id, **request_kwargs)
+                        break
+                    except RateLimited:
+                        # Stop the entire recursive resolve on the first 429/rate-limit
+                        # response instead of multiplying requests with retries.
+                        raise
+                    except WebsiteTokenRejected:
+                        if window_index == 0:
+                            token_rejected = True
+                            break
+                        raise
+                    except requests.Timeout as exc:
+                        last_error = exc
+                        if timeout_attempt < 3:
+                            time.sleep(2.0 * (timeout_attempt + 1))
+                            continue
+                        raise GoFileError("GoFile content request timed out.") from exc
+                    except requests.RequestException as exc:
+                        raise GoFileError("Could not reach the GoFile content API.") from exc
+
+                if payload is not None:
                     break
-                except RateLimited:
-                    # Stop the entire recursive resolve on the first 429/rate-limit
-                    # response instead of multiplying requests with retries.
-                    raise
-                except WebsiteTokenRejected:
-                    if attempt == 0:
-                        continue
-                    raise
-                except requests.Timeout as exc:
-                    last_error = exc
-                    if attempt < 3:
-                        time.sleep(2.0 * (attempt + 1))
-                        continue
-                    raise GoFileError("GoFile content request timed out.") from exc
-                except requests.RequestException as exc:
-                    raise GoFileError("Could not reach the GoFile content API.") from exc
+                if token_rejected:
+                    continue
+                break
 
             if payload is None:
                 raise GoFileError("Could not fetch GoFile content.") from last_error
@@ -452,9 +463,11 @@ class GoFileClient:
         def walk(
             folder_id: str,
             parent_rel: str,
+            parent_safe_rel: str = "",
             is_root: bool = False,
             parent_password_hash: Optional[str] = None,
             known_name: Optional[str] = None,
+            known_safe_name: Optional[str] = None,
         ) -> ResolvedNode:
             if folder_id in visited:
                 raise GoFileError("Recursive folder loop detected in GoFile content.")
@@ -487,6 +500,12 @@ class GoFileClient:
             try:
                 folder_name = str(data.get("name") or known_name or folder_id)
                 folder_rel = folder_name if is_root else f"{parent_rel}/{folder_name}" if parent_rel else folder_name
+                folder_safe_name = known_safe_name or sanitize_segment(folder_name)
+                folder_safe_rel = (
+                    folder_safe_name
+                    if is_root
+                    else f"{parent_safe_rel}/{folder_safe_name}" if parent_safe_rel else folder_safe_name
+                )
                 folder_key = self._node_key(folder_id, folder_rel)
                 node = ResolvedNode(
                     key=folder_key,
@@ -505,6 +524,7 @@ class GoFileClient:
                 else:
                     iterable = []
 
+                used_safe_segments: set[str] = set()
                 for child in iterable:
                     child_id = str(child.get("id") or "")
                     child_type = str(child.get("type") or "")
@@ -512,8 +532,22 @@ class GoFileClient:
                     if not child_id:
                         continue
 
+                    child_safe_name = unique_sanitized_segment(
+                        child_name,
+                        child_id,
+                        used_safe_segments,
+                    )
+
                     if child_type == "folder":
-                        child_node = walk(child_id, folder_rel, False, folder_password_hash, child_name)
+                        child_node = walk(
+                            child_id,
+                            folder_rel,
+                            folder_safe_rel,
+                            False,
+                            folder_password_hash,
+                            child_name,
+                            child_safe_name,
+                        )
                         node.children.append(child_node)
                         node.file_keys.extend(child_node.file_keys)
                         continue
@@ -533,7 +567,6 @@ class GoFileClient:
                         or not (link_host == "gofile.io" or link_host.endswith(".gofile.io"))
                     ):
                         raise GoFileError(f"GoFile did not provide a valid download link for {child_name!r}.")
-                    safe_name = sanitize_segment(child_name)
                     headers = {
                         "Cookie": f"accountToken={self.token}",
                         "User-Agent": self.user_agent,
@@ -543,9 +576,9 @@ class GoFileClient:
                         key=file_key,
                         id=child_id,
                         name=child_name,
-                        safe_name=safe_name,
+                        safe_name=child_safe_name,
                         size=size,
-                        relative_folder=folder_rel,
+                        relative_folder=folder_safe_rel,
                         relative_path=relative_path,
                         link=link,
                         headers=headers,
@@ -566,7 +599,7 @@ class GoFileClient:
             finally:
                 visited.discard(folder_id)
 
-        root = walk(content_id, "", True)
+        root = walk(content_id, "", "", True)
         return ResolveResult(
             content_id=content_id,
             root_name=root.name,
@@ -585,6 +618,17 @@ _WINDOWS_RESERVED = {
 }
 
 
+def _truncate_segment(value: str, max_length: int = 240) -> str:
+    """Truncate a path segment while preserving a normal filename extension."""
+    if len(value) <= max_length:
+        return value
+    stem, ext = os.path.splitext(value)
+    if stem and ext and len(ext) <= 32:
+        budget = max(1, max_length - len(ext))
+        return f"{stem[:budget]}{ext}"
+    return value[:max_length]
+
+
 def sanitize_segment(value: str) -> str:
     """Sanitize a GoFile-derived path segment for Windows and Unix targets."""
     if not isinstance(value, str):
@@ -598,7 +642,40 @@ def sanitize_segment(value: str) -> str:
     stem = value.split(".", 1)[0].upper()
     if stem in _WINDOWS_RESERVED:
         value = "_" + value
-    return value[:240]
+    return _truncate_segment(value)
+
+
+def _append_segment_suffix(value: str, suffix: str) -> str:
+    """Append a stable collision suffix while preserving a normal extension."""
+    stem, ext = os.path.splitext(value)
+    if not stem or len(ext) > 32:
+        stem, ext = value, ""
+    budget = max(1, 240 - len(suffix) - len(ext))
+    return f"{stem[:budget]}{suffix}{ext}"
+
+
+def unique_sanitized_segment(value: str, content_id: str, used: set[str]) -> str:
+    """Return a sibling-unique sanitized segment, case-insensitively.
+
+    Safe names keep their historical output. A suffix is added only when two
+    sibling names collapse to the same sanitized Windows path segment (including
+    truncation/case collisions), so existing non-colliding downloads are stable.
+    """
+    base = sanitize_segment(value)
+    candidate = base
+    folded = candidate.casefold()
+    if folded not in used:
+        used.add(folded)
+        return candidate
+
+    digest = hashlib.sha256(f"{content_id}\0{value}".encode("utf-8", errors="replace")).hexdigest()[:8]
+    candidate = _append_segment_suffix(base, f"~{digest}")
+    counter = 1
+    while candidate.casefold() in used:
+        candidate = _append_segment_suffix(base, f"~{digest}-{counter}")
+        counter += 1
+    used.add(candidate.casefold())
+    return candidate
 
 
 def sanitize_relative_path(relative_path: str) -> str:

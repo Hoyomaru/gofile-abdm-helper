@@ -465,9 +465,9 @@ class UserscriptStaticTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:8765", self.source)
         self.assertNotIn("localhost:15151", self.source)
         self.assertIn("Send Flat", self.source)
-        self.assertIn("preserve_structure: preserveStructure", self.source)
+        self.assertIn("preserve_structure: operation.preserveStructure", self.source)
         self.assertIn("/api/abdm/queues", self.source)
-        self.assertIn("queue_id: queueId", self.source)
+        self.assertIn("queue_id: operation.queueId", self.source)
         self.assertIn("Default (ABDM)", self.source)
 
     def test_selection_fallback_supports_current_and_legacy_row_ids(self):

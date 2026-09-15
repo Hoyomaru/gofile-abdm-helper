@@ -6,6 +6,44 @@
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Actions を追加し、Python regression tests / `py_compile` / Userscript Node tests / Userscript syntax check を push / pull request で実行。
+- Userscript に送信 generation guard、**Cancel Send**、persistent **Retry Failed** を追加。
+- ABDM 送信結果に `uncertain` 分類を追加し、結果不明の POST を通常 failure / automatic retry 候補から分離。
+- send / Website Token / Windows path / sanitize collision / tray recovery の regression tests を追加。
+
+### Changed
+
+- `resolve_id` expiry 時、残り file を GoFile content ID で保持して再 resolve 後の新しい file key へ remap し、同一 page の送信を安全に再開するよう変更。
+- SPA navigation / manual Load / user cancel で旧 send operation を無効化し、古い response で新しい page state を更新しないよう変更。
+- send result modal に file-level error detail と uncertain result を表示。uncertain item は ABDM 側を確認してから判断するよう案内。
+- tray health check は HTTP 200 だけでなく `service: gofile-abdm-helper` を確認するよう変更。
+- tray が所有する Helper process が生存したまま health check に連続失敗した場合、短時間の一時失敗を許容した後に自動再起動するよう変更。
+
+### Fixed
+
+- GoFile content request timeout の通常 retry が誤って前の 4-hour Website Token window を使う問題を修正。前 window fallback は Website Token rejection 時だけ行う。
+- Windows drive root `C:\\` / `C:/` が `C:` に縮退し、ABDM の保存先 semantics が変わる問題を修正。
+- sanitize 後に異なる GoFile file / folder 名が同一 target path へ衝突し得る問題を、stable suffix による deterministic disambiguation で修正。
+- 長い filename の sanitize で extension が失われやすい問題を改善。
+- `/api/abdm/send` が JSON object 以外の truthy JSON を受けた場合に 500 になり得る問題を修正。
+- ABDM POST の timeout / connection error を definite failure として扱い、Retry Failed による duplicate task を誘発し得る問題を修正。
+- send 中の SPA navigation で旧 page の残り task registration loop が継続する問題を修正。
+- tray-managed Helper が process alive / health down のまま永久に `Starting` へ留まる問題を修正。
+
+### Tests
+
+- `tests/test_review_regressions.py`: Website Token retry、Windows drive root、sanitize collision。
+- `tests/test_send_regressions.py`: non-object send body、ABDM uncertain outcome、Helper uncertain propagation。
+- `tests/test_send_userscript.cjs`: send generation / source guard、content ID remap、navigation invalidation、resolve-expiry resume、uncertain retry separation。
+- `tests/test_tray_source.py`: Helper identity health check、hung Helper restart guard。
+- Userscript CI は `node --test tests/*.cjs` で全 Node regression test を実行。
+
+### Implementation note
+
+- Userscript → Helper の send は引き続き通常 **1 file / request**。大きな batch は navigation / cancel 後にも Helper 側で複数 task が継続し得るため、今回の reliability 改善では採用しない。
+
 ### Documentation
 
 - `README.md` のインストール手順を、GitHub Release の `Source code (zip)` から始める初見ユーザー向けの流れへ補強。
