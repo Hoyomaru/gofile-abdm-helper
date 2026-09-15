@@ -11,24 +11,25 @@
 正式な公開リリース体系は **`v1.0.0` から開始**しています。
 
 - `v1.0.0`: 2026-09-14 公開の初回正式リリース
-- `v1.1.0`: 2026-09-15 の次回 release target。reliability / recovery 改善と backward-compatible feature を含む
+- `v1.1.0`: 2026-09-15 公開済み。reliability / recovery 改善と backward-compatible feature を含む
 
-`v1.1.0` の release commit では次を一致させます。
+`v1.1.0` の公開済み release metadata:
 
 ```text
 VERSION:             1.1.0
 Userscript @version: 1.1.0
 CHANGELOG:           ## [1.1.0] - 2026-09-15
 Git tag:             v1.1.0
+Tag target commit:   e755a4abceeae53e82b081267923c773511568a8
 GitHub Release:      v1.1.0
 Release title:       GoFile ABDM Helper v1.1.0
-Release date:        2026-09-15
+Published:           2026-09-15
 Draft:               false
 Prerelease:          false
 Custom assets:       なし
 ```
 
-公開済み Release の実体は GitHub Release ページを正とし、文書内の予定値だけで公開済みと判断しません。
+公開済み Release の実体は GitHub Release ページを正とし、文書内の値だけで判断しません。
 
 https://github.com/Hoyomaru/gofile-abdm-helper/releases
 
@@ -77,7 +78,7 @@ README release version
 
 一部だけ別 version のまま tag / Release を作成しないでください。
 
-`v1.1.0` の期待値:
+`v1.1.0` の公開済み値:
 
 ```text
 VERSION              = 1.1.0
@@ -91,6 +92,17 @@ GitHub Release title = GoFile ABDM Helper v1.1.0
 ---
 
 ## 4. 公開済み履歴
+
+### v1.1.0
+
+- published: 2026-09-15
+- tag: `v1.1.0`
+- tag target: `e755a4abceeae53e82b081267923c773511568a8`
+- title: `GoFile ABDM Helper v1.1.0`
+- draft: false
+- prerelease: false
+- custom assets: なし
+- GitHub-generated source archive: あり
 
 ### v1.0.0
 
@@ -206,7 +218,7 @@ GitHub Release は同じ tag を選びます。
 
 source-only release では GitHub-generated source archive だけで構いません。
 
-### v1.1.0 release notes に含める要点
+### v1.1.0 release notes の要点
 
 - Cancel Send / persistent Retry Failed
 - SPA navigation / stale send generation guard
