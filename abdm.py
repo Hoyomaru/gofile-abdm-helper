@@ -17,6 +17,10 @@ class ABDMError(RuntimeError):
     pass
 
 
+class ABDMUncertainError(ABDMError):
+    """ABDM may have accepted a POST even though no confirmation was received."""
+
+
 @dataclass
 class ABDMResult:
     ok: bool
@@ -128,7 +132,12 @@ class ABDMClient:
                 timeout=ABDM_TIMEOUT,
             )
         except requests.RequestException as exc:
-            raise ABDMError("Could not connect to AB Download Manager.") from exc
+            # With a POST, a transport failure cannot prove that ABDM did not
+            # already accept the task. Keep this separate from a definite HTTP
+            # failure so callers do not blindly retry and create duplicates.
+            raise ABDMUncertainError(
+                "ABDM did not confirm whether the download task was accepted."
+            ) from exc
 
         if response.ok:
             return ABDMResult(True, response.status_code, "sent")
