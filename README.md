@@ -1,7 +1,7 @@
 # GoFile ABDM Helper
 
-**現在のリリース:** `v1.0.0`  
-**リリース日:** 2026-09-14
+**現在のリリース:** `v1.1.0`  
+**リリース日:** 2026-09-15
 
 GoFile の既存ページに Userscript の UI を追加し、選択したファイル / フォルダを localhost 専用の Python Helper 経由で **AB Download Manager (ABDM)** へ登録する個人利用向けツールです。
 
@@ -53,17 +53,29 @@ GoFile の Web UI で表示している file / folder を、AB Download Manager 
 
 ---
 
-## v1.0.0 について
+## v1.1.0 について
 
-`v1.0.0` は、このリポジトリの **最初の正式な公開リリース**です。2026-09-14 に GitHub Release として公開されています。
+`v1.1.0` は、送信処理の信頼性・復旧性を強化した backward-compatible feature release です。2026-09-15 の正式リリースとして扱います。
 
-- Release: https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.0.0
-- Tag: `v1.0.0`
-- Release title: `GoFile ABDM Helper v1.0.0`
+- Release: https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.1.0
+- Tag: `v1.1.0`
+- Release title: `GoFile ABDM Helper v1.1.0`
+
+主な更新点:
+
+- **Cancel Send** と persistent **Retry Failed**
+- SPA navigation / manual Load 時の stale send 無効化
+- `resolve_id` expiry 後の content ID ベース再 resolve / remap / resume
+- ABDM POST の結果不明を `Uncertain` として分離し、blind retry を防止
+- Website Token retry、Windows drive root、sanitize collision / long filename の修正
+- tray の helper identity check と hung process recovery
+- GitHub Actions regression CI
+
+`v1.0.0` は、このリポジトリの最初の正式な公開リリースで、2026-09-14 に公開されました。
 
 開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、これらは正式な公開 Release ではありません。利用者向けの正式リリース履歴は `v1.0.0` から開始します。
 
-`v1.0.0` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.0.0` tag / Release の source archive を使用してください。**
+`v1.1.0` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.1.0` tag / Release の source archive を使用してください。**
 
 ---
 
@@ -164,7 +176,7 @@ Windows で初めて導入する場合は、次の順番で進めるのが簡単
 
 ### Release ZIP（推奨）
 
-1. [`v1.0.0` Release](https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.0.0) を開く
+1. [`v1.1.0` Release](https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.1.0) を開く
 2. GitHub が表示する **Source code (zip)** をダウンロード
 3. ZIP を任意の固定フォルダへ展開する
 
@@ -174,16 +186,16 @@ Windows で初めて導入する場合は、次の順番で進めるのが簡単
 C:\Tools\gofile-abdm-helper
 ```
 
-`v1.0.0` には exe / installer などの custom asset はありません。GitHub が release tag から自動生成する **Source code (zip)** / **Source code (tar.gz)** を利用します。
+`v1.1.0` には exe / installer などの custom asset はありません。GitHub が release tag から自動生成する **Source code (zip)** / **Source code (tar.gz)** を利用します。
 
-> `v1.0.0` の source archive は公開時点の snapshot です。最新の README は `main` 上のこのページを参照してください。
+> `v1.1.0` の source archive は公開時点の snapshot です。最新の README は `main` 上のこのページを参照してください。
 
 ### Git を使う場合
 
-公開版 `v1.0.0` を取得する場合:
+公開版 `v1.1.0` を取得する場合:
 
 ```bash
-git clone --branch v1.0.0 --depth 1 https://github.com/Hoyomaru/gofile-abdm-helper.git
+git clone --branch v1.1.0 --depth 1 https://github.com/Hoyomaru/gofile-abdm-helper.git
 cd gofile-abdm-helper
 ```
 
@@ -279,7 +291,7 @@ http://127.0.0.1:8765/health
 
 Userscript manager が有効な browser で次を開きます。
 
-https://raw.githubusercontent.com/Hoyomaru/gofile-abdm-helper/v1.0.0/gofile-abdm.user.js
+https://raw.githubusercontent.com/Hoyomaru/gofile-abdm-helper/v1.1.0/gofile-abdm.user.js
 
 通常は Userscript manager のインストール画面が開くので、内容を確認してインストールします。
 
@@ -440,7 +452,7 @@ Save folder が空の場合、Helper は ABDM の `folder` field を省略しま
 
 # パスワード保護コンテンツ
 
-`v1.0.0` では root と child folder の password challenge を扱います。
+現在のリリースでは root と child folder の password challenge を扱います。
 
 動作:
 
