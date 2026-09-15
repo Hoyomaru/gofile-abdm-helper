@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-15
+
+信頼性・復旧性を中心に、送信キャンセル、結果不明の ABDM POST の分離、`resolve_id` 期限切れ後の安全な再開、tray recovery、CI を追加した backward-compatible feature release。
+
 ### Added
 
 - GitHub Actions を追加し、Python regression tests / `py_compile` / Userscript Node tests / Userscript syntax check を push / pull request で実行。
@@ -48,8 +52,8 @@
 
 - `README.md` のインストール手順を、GitHub Release の `Source code (zip)` から始める初見ユーザー向けの流れへ補強。
 - Python version 確認、Userscript の導入方法、正常導入の確認手順を追加。
-- `DEVELOPMENT.md` / `docs/RELEASE.md` を、`v1.0.0` が 2026-09-14 に公開済みである現在の状態へ同期。
-- `v1.0.0` は custom binary asset なしで、GitHub が自動生成する source archive を配布物として利用する方針を明記。
+- `DEVELOPMENT.md` / `docs/RELEASE.md` を現在仕様・CI・release 手順へ同期。
+- custom binary asset なしで、GitHub が自動生成する source archive を配布物として利用する方針を維持。
 
 ## [1.0.0] - 2026-09-14
 
