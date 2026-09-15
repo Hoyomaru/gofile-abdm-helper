@@ -72,11 +72,11 @@ class WebsiteTokenRetryRegressionTests(unittest.TestCase):
 
 class WindowsDriveRootRegressionTests(unittest.TestCase):
     def test_drive_root_keeps_trailing_slash(self):
-        self.assertEqual(ABDMClient.build_folder(r"C:\", ""), "C:/")
+        self.assertEqual(ABDMClient.build_folder("C:\\", ""), "C:/")
         self.assertEqual(ABDMClient.build_folder("D:/", ""), "D:/")
 
     def test_drive_root_joins_relative_folder_without_double_slash(self):
-        self.assertEqual(ABDMClient.build_folder(r"C:\", "Anime/Subs"), "C:/Anime/Subs")
+        self.assertEqual(ABDMClient.build_folder("C:\\", "Anime/Subs"), "C:/Anime/Subs")
 
 
 class SanitizedCollisionRegressionTests(unittest.TestCase):
