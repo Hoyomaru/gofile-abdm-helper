@@ -36,6 +36,8 @@ API_MARKER_VALUE = "1"
 CACHE_TTL_SECONDS = 20 * 60
 MAX_SEND_ITEMS = 1000
 MAX_PASSWORD_HASHES = 1000
+LARGE_RESOLVE_NODE_THRESHOLD = 10_000
+LARGE_RESOLVE_SECONDS_THRESHOLD = 30.0
 PASSWORD_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 app = Flask(__name__)
@@ -261,6 +263,7 @@ def gofile_resolve():
     except ValueError as exc:
         return _api_error(str(exc), "invalid_password_hashes", 400)
 
+    resolve_started_at = time.monotonic()
     try:
         content_id = parse_content_id(source)
         effective_password = password if password != "" else None
@@ -285,6 +288,18 @@ def gofile_resolve():
                     _source_cache_put(source_key, result)
 
         resolve_id = _cache_put(result)
+        elapsed_seconds = time.monotonic() - resolve_started_at
+        if not cached and (
+            result.node_count >= LARGE_RESOLVE_NODE_THRESHOLD
+            or elapsed_seconds >= LARGE_RESOLVE_SECONDS_THRESHOLD
+        ):
+            app.logger.warning(
+                "Large GoFile resolve completed: files=%d nodes=%d max_depth=%d duration_ms=%d",
+                len(result.files),
+                result.node_count,
+                result.max_depth,
+                round(elapsed_seconds * 1000),
+            )
         return _resolve_payload(result, resolve_id, cached=cached)
     except InvalidContent as exc:
         return _api_error(str(exc), exc.code, 400)
