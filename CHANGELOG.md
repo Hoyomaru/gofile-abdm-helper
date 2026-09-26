@@ -8,6 +8,23 @@
 
 次回Release向けの変更はここへ記録します。
 
+### Fixed
+
+- ABDM接続確認中に送信操作を連続すると、同じ選択の登録処理が複数開始し得る競合を修正。最初の非同期処理より前にsend operationを予約し、preflight中もgeneration / cancellation guardを適用。
+- 極端に深い・大きいGoFile treeがPythonの再帰上限や過大な処理へ進む前に、nested folder depth 128 / node 100,000の安全上限で停止し、Helperから`422 tree_limit_exceeded`を返すよう変更。
+- resolved treeの公開用serializationとsize / file count集計を反復処理にし、同じ部分木を繰り返し再帰集計する処理を削減。
+
+### Tests
+
+- ABDM接続確認を保留した状態で連続送信し、preflight requestが1回だけになるUserscript回帰テストを追加。
+- resolve depth / node上限、深いconstructed treeのserialization、Helperの`tree_limit_exceeded`応答を回帰テストに追加。
+
+### Operations / Documentation
+
+- `docs/ARCHITECTURE.md` と `DEVELOPMENT.md` をv1.2.0時点のsend/navigation/uncertain behaviorへ同期。
+- release smoke testに連続送信競合の確認と結果記録欄を追加。
+- 正式releaseで解決済みPython依存を`python-dependencies-v<version>.txt`として記録し、GitHub Release assetへ添付するようrelease workflowを更新。
+
 ## [1.2.0] - 2026-09-27
 
 GoFile上の送信UIを簡潔にし、Windows導入とHelper/ABDM接続診断を大幅に分かりやすくしたbackward-compatible feature releaseです。
