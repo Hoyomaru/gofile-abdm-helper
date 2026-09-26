@@ -13,6 +13,7 @@
 - `v1.0.0`: 2026-09-14 公開の初回正式リリース
 - `v1.1.0`: 2026-09-15 公開済み。reliability / recovery 改善と backward-compatible feature を含む
 - `v1.2.0`: 2026-09-27 公開済み。送信UI簡略化、Windows one-step setup、自己診断を含む
+- `v1.2.1`: 2026-09-27 公開済み。送信競合、resolve safety、回帰テスト、release再現性を改善したbug-fix release
 
 `v1.1.0` の公開済み release metadata:
 
@@ -79,20 +80,35 @@ README release version
 
 一部だけ別 version のまま tag / Release を作成しないでください。
 
-`v1.1.0` の公開済み値:
+`v1.2.1` の公開済み値:
 
 ```text
-VERSION              = 1.1.0
-Userscript @version  = 1.1.0
-CHANGELOG            = ## [1.1.0] - 2026-09-15
-Git tag              = v1.1.0
-GitHub Release tag   = v1.1.0
-GitHub Release title = GoFile ABDM Helper v1.1.0
+VERSION              = 1.2.1
+Userscript @version  = 1.2.1
+CHANGELOG            = ## [1.2.1] - 2026-09-27
+Git tag              = v1.2.1
+GitHub Release tag   = v1.2.1
+GitHub Release title = GoFile ABDM Helper v1.2.1
 ```
 
 ---
 
 ## 4. 公開済み履歴
+
+### v1.2.1
+
+- published: 2026-09-27
+- tag: `v1.2.1`
+- tag target: `dadaf3345bf60bfc1564db7a6916c554adedd4ea`
+- title: `GoFile ABDM Helper v1.2.1`
+- draft: false
+- prerelease: false
+- GitHub-generated source archive: あり
+- Release asset: `python-dependencies-v1.2.1.txt`
+- Python regression / py_compile: PASS
+- Userscript regression / syntax check: PASS
+- Windows one-step setup smoke / dependency import / idempotent reuse: PASS
+- 2026-09-27 real-environment verification: PASS
 
 ### v1.2.0
 

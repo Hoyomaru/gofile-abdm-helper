@@ -23,6 +23,7 @@
 - 正式リリース体系: **`v1.0.0` から開始**
 - `VERSION`: `1.2.1`
 - `v1.2.1`: **2026-09-27 に公開済み**。送信競合、resolve safety、回帰テスト、release再現性を改善したbug-fix release
+- `v1.2.1` tag target: `dadaf3345bf60bfc1564db7a6916c554adedd4ea`
 - `v1.2.0`: **2026-09-27 に公開済み**。送信UI簡略化、Windows one-step setup、自己診断を含む
 - `v1.2.0` tag target: `8f19bd750e27adc182251bdee9d008423a87cbcb`
 - `v1.1.0`: **2026-09-15 に公開済み**。reliability / recovery 改善
