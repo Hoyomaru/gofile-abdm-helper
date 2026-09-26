@@ -199,3 +199,36 @@ test('send is reserved before ABDM preflight so rapid double-click issues one re
   assert.equal(api.state.sending, false);
 });
 
+test('preflight invalidation stops a pending connection check from starting a send', async () => {
+  const requests = [];
+  const api = runtime({
+    neutralizeUi: true,
+    gmXmlhttpRequest: (request) => requests.push(request),
+  });
+  api.state.resolveId = 'resolve-1';
+  api.state.nodeByKey.set('key-1', {
+    key: 'key-1',
+    id: 'file001',
+    type: 'file',
+    name: 'Episode01.mkv',
+    size: 100,
+    file_keys: ['key-1'],
+  });
+  api.state.selectedKeys.add('key-1');
+
+  const pendingSend = api.sendSelected(false, true);
+  assert.equal(requests.length, 1);
+  assert.equal(api.state.sending, true);
+
+  api.invalidateSend('navigation', false);
+  assert.equal(api.state.sending, false);
+  assert.equal(api.state.activeSend, null);
+
+  requests[0].onload({status: 200, response: {connected: true}, responseText: ''});
+  await pendingSend;
+
+  assert.equal(requests.length, 1);
+  assert.equal(api.state.sending, false);
+  assert.equal(api.state.activeSend, null);
+});
+
