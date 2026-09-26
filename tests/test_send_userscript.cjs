@@ -7,7 +7,22 @@ const vm = require('node:vm');
 
 const SOURCE = fs.readFileSync(path.join(__dirname, '..', 'gofile-abdm.user.js'), 'utf8');
 
-function runtime() {
+function replaceFunctionBlock(source, startNeedle, endNeedle, replacement) {
+  const start = source.indexOf(startNeedle);
+  const end = source.indexOf(endNeedle, start);
+  assert.ok(start >= 0 && end > start, `Could not replace ${startNeedle}`);
+  return source.slice(0, start) + replacement + source.slice(end);
+}
+
+function headlessSendSource() {
+  let source = SOURCE;
+  source = replaceFunctionBlock(source, '  function toast(', '\n  function formatBytes(', '  function toast() {}\n');
+  source = replaceFunctionBlock(source, '  function updateToolbar()', '\n  function setProgress(', '  function updateToolbar() {}\n');
+  source = replaceFunctionBlock(source, '  function setProgress(', '\n  async function checkABDM()', '  function setProgress() {}\n');
+  return source;
+}
+
+function runtime({gmXmlhttpRequest = () => {}, neutralizeUi = false} = {}) {
   const window = {
     __GAB_TEST_MODE__: true,
     location: {href: 'https://gofile.io/d/root123'},
@@ -22,12 +37,12 @@ function runtime() {
     clearTimeout,
     GM_getValue: () => '',
     GM_setValue: () => {},
-    GM_xmlhttpRequest: () => {},
+    GM_xmlhttpRequest: gmXmlhttpRequest,
     requestAnimationFrame: (callback) => callback(),
     matchMedia: () => ({matches: false}),
     getComputedStyle: () => ({backgroundColor: 'rgb(255, 255, 255)'}),
   };
-  vm.runInNewContext(SOURCE, context, {filename: 'gofile-abdm.user.js'});
+  vm.runInNewContext(neutralizeUi ? headlessSendSource() : SOURCE, context, {filename: 'gofile-abdm.user.js'});
   return window.__GAB_TEST_API__;
 }
 
@@ -143,3 +158,44 @@ test('resolve expiry resumes by content id and uncertain results are excluded fr
   assert.ok(block.includes('state.failedResults.map((item) => item.id)'));
   assert.ok(!block.includes('state.uncertainResults.map((item) => item.id)'));
 });
+
+test('send is reserved before ABDM preflight so rapid double-click issues one request', async () => {
+  const requests = [];
+  const api = runtime({
+    neutralizeUi: true,
+    gmXmlhttpRequest: (request) => requests.push(request),
+  });
+  api.state.resolveId = 'resolve-1';
+  api.state.nodeByKey.set('key-1', {
+    key: 'key-1',
+    id: 'file001',
+    type: 'file',
+    name: 'Episode01.mkv',
+    size: 100,
+    file_keys: ['key-1'],
+  });
+  api.state.selectedKeys.add('key-1');
+
+  const first = api.sendSelected(false, true);
+  const second = api.sendSelected(false, true);
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].method, 'GET');
+  assert.match(requests[0].url, /\/api\/abdm\/status$/);
+  assert.equal(api.state.sending, true);
+  assert.ok(api.state.activeSend);
+  await second;
+
+  requests[0].onload({status: 200, response: {connected: false}, responseText: ''});
+  await first;
+
+  assert.equal(api.state.sending, false);
+  assert.equal(api.state.activeSend, null);
+
+  const third = api.sendSelected(false, true);
+  assert.equal(requests.length, 2);
+  requests[1].onload({status: 200, response: {connected: false}, responseText: ''});
+  await third;
+  assert.equal(api.state.sending, false);
+});
+
