@@ -59,6 +59,14 @@ test('resolved row checkbox accessible names stay in Japanese', () => {
   assert.ok(SOURCE.includes("checkbox.setAttribute('aria-label'"));
 });
 
+test('settings expose a self-diagnosis flow for Helper and ABDM', () => {
+  assert.ok(SOURCE.includes("button('自己診断', 'gab-diagnostics')"));
+  assert.ok(SOURCE.includes("gmRequest('GET', '/api/diagnostics', null, 10000)"));
+  assert.ok(SOURCE.includes('Python Helperに接続できません'));
+  assert.ok(SOURCE.includes('ABDMを起動してからもう一度「自己診断」を実行してください。'));
+  assert.ok(SOURCE.includes('role="status" aria-live="polite"'));
+});
+
 test('fallback selection button is only shown when row matching needs help', () => {
   const start = SOURCE.indexOf('  function updateToolbar()');
   const end = SOURCE.indexOf('  function setProgress(', start);
