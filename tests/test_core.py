@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from abdm import ABDMClient
+from abdm import ABDMClient, ABDMError
 try:
     import app as app_module
     app = app_module.app
