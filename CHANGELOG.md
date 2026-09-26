@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- GoFile toolbar の通常送信操作を **ABDMへ送信** 1つに統合し、**フォルダ構造を維持** checkbox で structure / flat を切り替える UI へ変更。
+- DOM row matching が必要な場合だけ **一覧から選択** fallback を表示し、通常時の toolbar 情報量を削減。
+- toolbar、Settings、送信結果の主要文言を日本語へ統一し、`Uncertain` は UI 上で **確認が必要** として説明するよう改善。
+
 ## [1.1.0] - 2026-09-15
 
 信頼性・復旧性を中心に、送信キャンセル、結果不明の ABDM POST の分離、`resolve_id` 期限切れ後の安全な再開、tray recovery、CI を追加した backward-compatible feature release。

@@ -341,14 +341,16 @@ https://gofile.io/d/xxxxxxxx
 3. GoFile share を開く
 4. resolve 完了を待つ
 5. file / folder を checkbox で選択
-6. 必要なら **Select All** / **Clear** / **Items** を使用
-7. 必要なら **⚙** で queue / Save folder / preset を設定
-8. 送信モードを選ぶ
-   - **Send to ABDM**: structure 保持
-   - **Send Flat**: structure を無視
-9. ABDM への登録進捗を確認
-10. 一部失敗時は結果の file-level error を確認し、必要なら **Retry Failed**
-11. 送信を止める必要がある場合は **Cancel Send**
+6. 必要なら **全選択** / **選択解除** を使用
+7. ページ上の項目との対応付けに失敗した場合は **一覧から選択** を使用
+8. 必要なら **設定** で Queue / 保存先フォルダ / preset を設定
+9. **フォルダ構造を維持** を on/off して送信方式を選ぶ
+   - on: GoFile の relative folder structure を保持
+   - off: folder structure を無視して flat に送信
+10. **ABDMへ送信** を押す
+11. ABDM への登録進捗を確認
+12. 一部失敗時は結果の file-level error を確認し、必要なら **失敗を再送**
+13. 送信を止める必要がある場合は **送信を中止**
 
 表示される progress は **ABDM への task 登録進捗**です。実際の download % / speed / ETA ではありません。
 
@@ -369,7 +371,7 @@ Userscript は GoFile の単一 class 名に固定せず、既知の content ID 
 
 ### Items fallback
 
-GoFile DOM が変わって row と tree を対応付けられない場合でも、**Items** から解決済み tree を直接選択できます。
+GoFile DOM が変わって row と tree を対応付けられない場合は、toolbar に **一覧から選択** が表示され、解決済み tree から直接選択できます。通常時はこの fallback 操作を表示しません。
 
 ### Provisional selection
 
@@ -385,7 +387,7 @@ folder を選択すると descendant file を recursive に選択対象にしま
 
 # 設定
 
-Settings（**⚙**）で管理するもの:
+**設定** で管理するもの:
 
 | 設定 | 保存 | デフォルト / 動作 |
 |---|---|---|
@@ -416,15 +418,14 @@ Settings を開くたび、Helper 経由で ABDM の `/queues` を取得しま�
 
 # 保存先と送信モード
 
-## Send Flat
+Toolbar の **フォルダ構造を維持** で送信方式を切り替えます。
 
-GoFile の relative folder を無視します。
+- **on:** GoFile の relative folder structure を保持します。
+- **off:** relative folder を無視して flat に送信します。
 
-Save folder が空なら ABDM の optional `folder` field を省略します。
+flat mode で Save folder が空なら ABDM の optional `folder` field を省略します。
 
-## Send to ABDM
-
-Save root がある場合:
+structure mode で Save root がある場合:
 
 ```text
 D:/Downloads

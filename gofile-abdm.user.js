@@ -154,8 +154,16 @@
       #${TOOLBAR_ID} .gab-status-dot { display:inline-block; width:.55rem; height:.55rem; border-radius:999px; margin-right:.3rem; background:#ef4444; }
       #${TOOLBAR_ID} .gab-status-dot.connected { background:#22c55e; }
       #${TOOLBAR_ID} .gab-summary { font-size:.85rem; white-space:nowrap; }
+      #${TOOLBAR_ID} .gab-send-options { display:flex; align-items:center; gap:.65rem; margin-left:auto; }
+      #${TOOLBAR_ID} .gab-mode { display:inline-flex; align-items:center; gap:.35rem; font-size:.82rem; white-space:nowrap; cursor:pointer; }
+      #${TOOLBAR_ID} .gab-mode input { width:1rem; height:1rem; margin:0; accent-color:#3b82f6; }
+      #${TOOLBAR_ID} #gab-send { min-width:10.5rem; font-weight:700; }
+      #${TOOLBAR_ID} .gab-send-hint { font-size:.76rem; opacity:.72; white-space:nowrap; }
       #${TOOLBAR_ID} .gab-progress { width:100%; font-size:.82rem; opacity:.9; display:none; }
       #${TOOLBAR_ID} .gab-progress.visible { display:block; }
+      #${TOOLBAR_ID} .gab-progress-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.65rem; }
+      #${TOOLBAR_ID} .gab-progress-head #gab-progress-text { min-width:0; flex:1; overflow-wrap:anywhere; }
+      #${TOOLBAR_ID} .gab-progress-head #gab-cancel-send { flex:0 0 auto; }
       #${TOOLBAR_ID} .gab-progress-bar { height:5px; border-radius:999px; overflow:hidden; background:color-mix(in srgb,currentColor 12%,transparent); margin-top:4px; }
       #${TOOLBAR_ID} .gab-progress-bar > span { display:block; height:100%; width:0%; background:currentColor; transition:width .15s ease; }
       .${CHECKBOX_CLASS} { margin-right:.5rem; flex:0 0 auto; width:1rem; height:1rem; accent-color:#3b82f6; }
@@ -211,24 +219,32 @@
     toolbar.className = 'panel';
     toolbar.innerHTML = `
       <div class="gab-row">
-        ${button('Select All', 'gab-select-all')}
-        ${button('Clear', 'gab-clear')}
-        <span id="gab-summary" class="gab-summary">Selected: 0 files / 0 B</span>
+        ${button('全選択', 'gab-select-all')}
+        ${button('選択解除', 'gab-clear')}
+        <span id="gab-summary" class="gab-summary">選択: 0ファイル / 0 B</span>
         <span class="gab-spacer"></span>
-        <span id="gab-status" class="gab-status"><span class="gab-status-dot"></span>ABDM Offline</span>
-        ${button('Items', 'gab-items')}
-        ${button('⚙', 'gab-settings')}
-        ${button('Retry Failed', 'gab-retry-failed-toolbar')}
-        ${button('Cancel Send', 'gab-cancel-send')}
-        ${button('Send Flat', 'gab-send-flat')}
-        ${button('Send to ABDM', 'gab-send', true)}
+        <span id="gab-status" class="gab-status"><span class="gab-status-dot"></span>ABDM オフライン</span>
+        ${button('一覧から選択', 'gab-items')}
+        ${button('設定', 'gab-settings')}
+        ${button('失敗を再送', 'gab-retry-failed-toolbar')}
       </div>
       <div class="gab-row" style="margin-top:.45rem">
         <div class="gab-url"><input id="gab-url" class="gab-input" type="text" spellcheck="false" aria-label="GoFile URL"></div>
-        ${button('Load', 'gab-load')}
+        ${button('読み込み', 'gab-load')}
+        <span id="gab-send-hint" class="gab-send-hint">ファイルを選択してください</span>
+        <div class="gab-send-options">
+          <label class="gab-mode" for="gab-preserve-structure">
+            <input id="gab-preserve-structure" type="checkbox" checked>
+            フォルダ構造を維持
+          </label>
+          ${button('ABDMへ送信', 'gab-send', true)}
+        </div>
       </div>
       <div id="gab-progress" class="gab-progress">
-        <div id="gab-progress-text">Ready</div>
+        <div class="gab-progress-head">
+          <div id="gab-progress-text" role="status" aria-live="polite">準備完了</div>
+          ${button('送信を中止', 'gab-cancel-send')}
+        </div>
         <div class="gab-progress-bar"><span id="gab-progress-fill"></span></div>
       </div>
     `;
@@ -245,8 +261,10 @@
     document.getElementById('gab-items').addEventListener('click', openSelectionTree);
     document.getElementById('gab-retry-failed-toolbar').addEventListener('click', () => sendSelected(true));
     document.getElementById('gab-cancel-send').addEventListener('click', cancelSend);
-    document.getElementById('gab-send-flat').addEventListener('click', () => sendSelected(false, false));
-    document.getElementById('gab-send').addEventListener('click', () => sendSelected(false, true));
+    document.getElementById('gab-send').addEventListener('click', () => {
+      const preserveStructure = document.getElementById('gab-preserve-structure')?.checked !== false;
+      sendSelected(false, preserveStructure);
+    });
     document.getElementById('gab-load').addEventListener('click', () => {
       const value = document.getElementById('gab-url').value.trim();
       const nextSource = value || window.location.href;
@@ -394,34 +412,40 @@
     const stats = selectedStats();
     const summary = toolbar.querySelector('#gab-summary');
     if (summary) summary.textContent = stats.provisional
-      ? `Selected: ${stats.count} visible item(s) — pending resolve`
-      : `Selected: ${stats.count} files / ${formatBytes(stats.total)}`;
+      ? `選択: ${stats.count}項目 — 内容を確認中`
+      : `選択: ${stats.count}ファイル / ${formatBytes(stats.total)}`;
 
     const status = toolbar.querySelector('#gab-status');
     if (status) {
-      status.innerHTML = `<span class="gab-status-dot ${state.connected ? 'connected' : ''}"></span>ABDM ${state.connected ? 'Connected' : 'Offline'}`;
+      status.innerHTML = `<span class="gab-status-dot ${state.connected ? 'connected' : ''}"></span>ABDM ${state.connected ? '接続済み' : 'オフライン'}`;
     }
 
     const send = toolbar.querySelector('#gab-send');
-    const sendFlat = toolbar.querySelector('#gab-send-flat');
+    const sendHint = toolbar.querySelector('#gab-send-hint');
+    const preserveStructure = toolbar.querySelector('#gab-preserve-structure');
     if (send) {
       send.disabled = state.sending || state.resolving || stats.count === 0;
-      send.textContent = 'Send to ABDM';
+      send.textContent = state.sending ? 'ABDMへ送信中…' : 'ABDMへ送信';
+      send.title = stats.count === 0 ? '送信するファイルを選択してください。' : '';
     }
-    if (sendFlat) sendFlat.disabled = state.sending || state.resolving || stats.count === 0;
+    if (sendHint) sendHint.classList.toggle('gab-hidden', state.sending || state.resolving || stats.count > 0);
+    if (preserveStructure) preserveStructure.disabled = state.sending || state.resolving;
 
     const retry = toolbar.querySelector('#gab-retry-failed-toolbar');
     if (retry) {
       retry.classList.toggle('gab-hidden', state.failedResults.length === 0);
       retry.disabled = state.sending || state.resolving || state.failedResults.length === 0;
-      retry.textContent = `Retry Failed (${state.failedResults.length})`;
+      retry.textContent = `失敗を再送 (${state.failedResults.length})`;
     }
 
     const cancel = toolbar.querySelector('#gab-cancel-send');
     if (cancel) cancel.classList.toggle('gab-hidden', !state.sending);
 
     const items = toolbar.querySelector('#gab-items');
-    if (items) items.classList.remove('gab-hidden');
+    if (items) {
+      const fallbackNeeded = Boolean(state.root) && state.unmatched > 0;
+      items.classList.toggle('gab-hidden', !fallbackNeeded);
+    }
     syncInjectedCheckboxes();
   }
 
@@ -431,7 +455,11 @@
     progress.classList.toggle('visible', visible);
     const text = document.getElementById('gab-progress-text');
     const fill = document.getElementById('gab-progress-fill');
-    if (text) text.textContent = total ? `Sending to ABDM ${current} / ${total}${label ? ` — ${label}` : ''}` : label;
+    if (text) {
+      const progressLabel = total ? `ABDMへ送信中 ${current} / ${total}${label ? ` — ${label}` : ''}` : label;
+      text.textContent = progressLabel;
+      text.title = progressLabel || '';
+    }
     if (fill) fill.style.width = total ? `${Math.max(0, Math.min(100, current / total * 100))}%` : '0%';
   }
 
@@ -688,9 +716,10 @@
     for (const item of items) {
       const wrap = document.createElement('label');
       wrap.className = 'gab-check-wrap';
-      wrap.title = 'Select visible GoFile item (will be matched after resolve)';
+      wrap.title = '表示中のGoFile項目を選択（読み込み後に内容を確認します）';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', '表示中のGoFile項目を選択');
       checkbox.className = CHECKBOX_CLASS;
       checkbox.dataset.gabContentId = item.id;
       checkbox.checked = state.provisionalSelectedIds.has(item.id);
@@ -756,9 +785,12 @@
       used.add(row);
       const wrap = document.createElement('label');
       wrap.className = 'gab-check-wrap';
-      wrap.title = node.type === 'folder' ? `Select folder recursively: ${node.name}` : `Select file: ${node.name}`;
+      wrap.title = node.type === 'folder' ? `フォルダを再帰的に選択: ${node.name}` : `ファイルを選択: ${node.name}`;
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', node.type === 'folder'
+        ? `フォルダを再帰的に選択: ${node.name}`
+        : `ファイルを選択: ${node.name}`);
       checkbox.className = CHECKBOX_CLASS;
       checkbox.dataset.gabKey = node.key;
       checkbox.checked = state.selectedKeys.has(node.key);
@@ -966,44 +998,44 @@
       }
     }
 
-    const presetOptions = [`<option value="">(None)</option>`, ...presets.map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`)].join('');
+    const presetOptions = [`<option value="">なし</option>`, ...presets.map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`)].join('');
     const queueOptions = [
-      '<option value="">Default (ABDM)</option>',
+      '<option value="">デフォルト（ABDM）</option>',
       ...queues.map((queue) => `<option value="${escapeHtml(queue.id)}">${escapeHtml(queue.name)} (#${escapeHtml(queue.id)})</option>`),
     ];
     const selectedQueueExists = selectedQueueId === null || queues.some((queue) => Number(queue.id) === selectedQueueId);
     if (selectedQueueId !== null && !selectedQueueExists) {
-      queueOptions.push(`<option value="${escapeHtml(selectedQueueId)}">Unavailable queue (#${escapeHtml(selectedQueueId)})</option>`);
+      queueOptions.push(`<option value="${escapeHtml(selectedQueueId)}">利用できないQueue (#${escapeHtml(selectedQueueId)})</option>`);
     }
 
-    openModal('AB Download Manager Settings', `
-      <div class="gab-field"><div id="gab-settings-status" class="gab-status"><span class="gab-status-dot ${state.connected ? 'connected' : ''}"></span>ABDM ${state.connected ? 'Connected' : 'Offline'}</div></div>
+    openModal('AB Download Manager 設定', `
+      <div class="gab-field"><div id="gab-settings-status" class="gab-status"><span class="gab-status-dot ${state.connected ? 'connected' : ''}"></span>ABDM ${state.connected ? '接続済み' : 'オフライン'}</div></div>
       <div class="gab-field">
-        <label for="gab-queue-select">Download queue</label>
+        <label for="gab-queue-select">ダウンロードQueue</label>
         <select id="gab-queue-select" class="gab-select">${queueOptions.join('')}</select>
-        <div class="gab-muted" style="margin-top:.3rem">Default omits ABDM's optional <code>queueId</code>. The queue list refreshes whenever this Settings popup opens.${queueLoadError ? ' Queue list could not be refreshed.' : ''}</div>
+        <div class="gab-muted" style="margin-top:.3rem">デフォルトではABDM側で設定されているQueueを使用します。設定を開くたびにQueue一覧を更新します。${queueLoadError ? ' Queue一覧を更新できませんでした。' : ''}</div>
       </div>
       <div class="gab-field">
-        <label for="gab-preset-select">Save preset</label>
+        <label for="gab-preset-select">保存先プリセット</label>
         <select id="gab-preset-select" class="gab-select">${presetOptions}</select>
       </div>
       <div class="gab-field">
-        <label for="gab-save-folder">Save folder</label>
-        <input id="gab-save-folder" class="gab-input" type="text" value="${escapeHtml(lastFolder)}" placeholder="Empty = ABDM default folder">
+        <label for="gab-save-folder">保存先フォルダ</label>
+        <input id="gab-save-folder" class="gab-input" type="text" value="${escapeHtml(lastFolder)}" placeholder="空欄 = ABDMのデフォルト保存先">
       </div>
       <div class="gab-field">
-        <label for="gab-preset-name">Preset name</label>
+        <label for="gab-preset-name">プリセット名</label>
         <input id="gab-preset-name" class="gab-input" type="text" placeholder="Videos">
         <div class="gab-preset-actions">
-          ${button('Add', 'gab-preset-add')}
-          ${button('Edit', 'gab-preset-edit')}
-          ${button('Delete', 'gab-preset-delete')}
+          ${button('追加', 'gab-preset-add')}
+          ${button('編集', 'gab-preset-edit')}
+          ${button('削除', 'gab-preset-delete')}
         </div>
       </div>
-      <div class="gab-muted">When Save folder is empty, the helper omits ABDM's optional <code>folder</code> field so ABDM uses its configured default.</div>
+      <div class="gab-muted">保存先を空欄にすると、ABDMで設定されているデフォルト保存先を使用します。</div>
       <div class="gab-actions">
-        ${button('Close', 'gab-settings-close')}
-        ${button('Save', 'gab-settings-save', true)}
+        ${button('閉じる', 'gab-settings-close')}
+        ${button('保存', 'gab-settings-save', true)}
       </div>
     `, (card, backdrop) => {
       const select = card.querySelector('#gab-preset-select');
@@ -1014,7 +1046,7 @@
       queueSelect.value = selectedQueueId === null ? '' : String(selectedQueueId);
 
       const rebuild = (selectedIndex = '') => {
-        select.innerHTML = `<option value="">(None)</option>` + localPresets.map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`).join('');
+        select.innerHTML = `<option value="">なし</option>` + localPresets.map((p, i) => `<option value="${i}">${escapeHtml(p.name)}</option>`).join('');
         select.value = selectedIndex;
       };
       select.addEventListener('change', () => {
@@ -1026,21 +1058,21 @@
       });
       card.querySelector('#gab-preset-add').addEventListener('click', () => {
         const presetName = name.value.trim();
-        if (!presetName) return toast('Preset name is required.', 'warning');
+        if (!presetName) return toast('プリセット名を入力してください。', 'warning');
         localPresets.push({ name: presetName, path: folder.value.trim() });
         rebuild(String(localPresets.length - 1));
       });
       card.querySelector('#gab-preset-edit').addEventListener('click', () => {
         const index = Number(select.value);
-        if (select.value === '' || !localPresets[index]) return toast('Select a preset to edit.', 'warning');
+        if (select.value === '' || !localPresets[index]) return toast('編集するプリセットを選択してください。', 'warning');
         const presetName = name.value.trim();
-        if (!presetName) return toast('Preset name is required.', 'warning');
+        if (!presetName) return toast('プリセット名を入力してください。', 'warning');
         localPresets[index] = { name: presetName, path: folder.value.trim() };
         rebuild(String(index));
       });
       card.querySelector('#gab-preset-delete').addEventListener('click', () => {
         const index = Number(select.value);
-        if (select.value === '' || !localPresets[index]) return toast('Select a preset to delete.', 'warning');
+        if (select.value === '' || !localPresets[index]) return toast('削除するプリセットを選択してください。', 'warning');
         localPresets.splice(index, 1);
         name.value = '';
         rebuild('');
@@ -1052,7 +1084,7 @@
         GM_setValue(STORAGE.queueId, queueValue === '' ? '' : Number(queueValue));
         savePresets(localPresets);
         backdrop.remove();
-        toast('ABDM settings saved.', 'success');
+        toast('ABDM設定を保存しました。', 'success');
       });
     });
   }
@@ -1072,13 +1104,13 @@
   }
 
   function openSelectionTree() {
-    if (!state.root) return toast('Load GoFile content first.', 'warning');
-    openModal('GoFile Selection', `
-      <div class="gab-muted" style="margin-bottom:.55rem">Fallback selector for rows that could not be matched to the current GoFile DOM. Folder selection is recursive.</div>
+    if (!state.root) return toast('先にGoFileの内容を読み込んでください。', 'warning');
+    openModal('一覧から選択', `
+      <div class="gab-muted" style="margin-bottom:.55rem">ページ上で対応付けできなかった項目を、解決済みの一覧から選択できます。フォルダを選ぶと中のファイルも対象になります。</div>
       <div class="gab-tree">${(state.root.children || []).map((node) => renderTreeNode(node)).join('')}</div>
       <div class="gab-actions">
-        ${button('Clear', 'gab-tree-clear')}
-        ${button('Apply', 'gab-tree-apply', true)}
+        ${button('選択解除', 'gab-tree-clear')}
+        ${button('反映', 'gab-tree-apply', true)}
       </div>
     `, (card, backdrop) => {
       const boxes = [...card.querySelectorAll('[data-gab-tree-key]')];
@@ -1137,7 +1169,7 @@
     return `
       <div class="gab-field">
         <strong>${escapeHtml(title)} (${entries.length})</strong>
-        ${warning ? '<div class="gab-muted">Do not retry these automatically. Check ABDM first because the task may already exist.</div>' : ''}
+        ${warning ? '<div class="gab-muted">ABDMに登録済みの可能性があります。重複を避けるため、再送する前にABDMの一覧を確認してください。</div>' : ''}
         <div class="gab-result-list">${rows}${remaining > 0 ? `<div class="gab-result-row">…and ${remaining} more</div>` : ''}</div>
       </div>
     `;
@@ -1271,17 +1303,17 @@
   function showSendResult(success, failedResults, uncertainResults) {
     const failed = failedResults.length;
     const uncertain = uncertainResults.length;
-    openModal('Sent to ABDM', `
+    openModal('ABDMへの送信結果', `
       <div class="gab-field">
-        Success <strong>${success}</strong><br>
-        Failed <strong>${failed}</strong><br>
-        Uncertain <strong>${uncertain}</strong>
+        成功 <strong>${success}</strong><br>
+        失敗 <strong>${failed}</strong><br>
+        確認が必要 <strong>${uncertain}</strong>
       </div>
-      ${renderResultList('Failed', failedResults)}
-      ${renderResultList('Uncertain', uncertainResults, true)}
+      ${renderResultList('失敗', failedResults)}
+      ${renderResultList('確認が必要', uncertainResults, true)}
       <div class="gab-actions">
-        ${failed ? button('Retry Failed', 'gab-retry-failed', true) : ''}
-        ${button('Close', 'gab-result-close')}
+        ${failed ? button('失敗を再送', 'gab-retry-failed', true) : ''}
+        ${button('閉じる', 'gab-result-close')}
       </div>
     `, (card, backdrop) => {
       card.querySelector('#gab-result-close').addEventListener('click', () => backdrop.remove());
@@ -1291,8 +1323,8 @@
     const type = failed || uncertain ? 'warning' : 'success';
     toast(
       uncertain
-        ? `Sent ${success}; ${failed} failed; ${uncertain} uncertain. Check ABDM before retrying uncertain items.`
-        : failed ? `Sent ${success}; ${failed} failed.` : `Sent ${success} file(s) to ABDM.`,
+        ? `成功 ${success}件、失敗 ${failed}件、確認が必要 ${uncertain}件。確認が必要な項目は再送前にABDMを確認してください。`
+        : failed ? `成功 ${success}件、失敗 ${failed}件。` : `${success}件をABDMへ送信しました。`,
       type,
     );
   }
