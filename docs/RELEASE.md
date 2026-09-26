@@ -42,7 +42,7 @@ GitHub Actions の `Tests` workflow を導入済みです。`main` push と pull
 
 専用 installer、wheel、exe、Docker image、独自 build archive の自動生成工程はありません。
 
-GitHub Release では custom asset を必須とせず、GitHub が release tag から自動生成する次の source archive を配布物として利用します。
+GitHub Release では GitHub が release tag から自動生成する次の source archive を主配布物として利用します。加えて、今後の release workflow は、その release gate で実際に解決した Python 依存一式を `python-dependencies-v<version>.txt` として添付します。
 
 - `Source code (zip)`
 - `Source code (tar.gz)`
@@ -148,12 +148,14 @@ GitHub Release title = GoFile ABDM Helper v1.1.0
 - [ ] `docs/RELEASE.md` が現在の CI / release flow と一致
 - [ ] secrets / credential が混入していない
 
-### Python tests
+### Python tests / dependency snapshot
 
 ```bash
 python -m unittest discover -s tests -v
 python -m py_compile app.py gofile.py abdm.py tray.py
 ```
+
+正式 release の `Publish Release` workflow は `requirements.txt` を解決した直後に `pip freeze --all` を記録し、Python / pip version と合わせて `python-dependencies-v<version>.txt` を artifact 化します。publish job は同じ file を GitHub Release asset へ添付します。これにより、range 指定の `requirements.txt` を維持しつつ、実際に release gate を通過した依存セットを後から再現・調査できます。
 
 ### Userscript tests
 
@@ -190,11 +192,13 @@ CI は real GoFile / ABDM / Windows GUI の E2E を代替しません。
 - wrong password → retry
 - file 1件 send
 - folder recursive selection
-- `Send Flat`
+- **フォルダ構造を維持** OFF で flat send
 - structure preserve + explicit Save folder
 - queue selection
 - Retry Failed
 - Cancel Send
+- ABDM接続確認を意図的に遅らせた状態で送信を連続操作し、同じ選択の登録が1回だけ開始される
+- ABDM接続確認失敗後に送信操作が再度可能になる
 - send 中の SPA navigation
 - `resolve_id` expiry / Helper restart 後の残り送信再開
 - ABDM uncertain result の表示と blind retry 防止
@@ -202,6 +206,18 @@ CI は real GoFile / ABDM / Windows GUI の E2E を代替しません。
 - hung-but-alive Helper の health failure threshold 後 restart
 - Start with Windows on/off
 - rate-limit stop behavior
+
+実施結果は release commit / PR に対して最低限次を残します。未実施項目を PASS と記録しません。
+
+| 項目 | 記録内容 |
+|---|---|
+| 実施日 | `YYYY-MM-DD` |
+| release commit | full SHA |
+| OS / browser / Userscript manager / Python / ABDM | 実際の環境 |
+| GoFile resolve / send | PASS / FAIL / NOT RUN |
+| password / retry / navigation / uncertain | PASS / FAIL / NOT RUN |
+| Windows setup / tray | PASS / FAIL / NOT RUN |
+| 備考 | 再現条件、未実施理由、関連 issue / PR |
 
 ---
 
@@ -265,6 +281,7 @@ source-only release では GitHub-generated source archive だけで構いませ
 - [ ] CHANGELOG / README が一致
 - [ ] release の raw Userscript URL が開ける
 - [ ] source archive が生成されている
+- [ ] `python-dependencies-v<version>.txt` が Release asset として添付され、Python / pip version と resolved package version を含む
 - [ ] broken link がない
 - [ ] `[Unreleased]` に release 済み内容が重複していない
 - [ ] 公開後に `main` へ追加した変更は `[Unreleased]` に記録
