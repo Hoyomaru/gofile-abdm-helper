@@ -40,6 +40,25 @@ test('toolbar uses one primary send action with a structure mode checkbox', () =
   assert.ok(!SOURCE.includes("button('Send Flat', 'gab-send-flat')"));
 });
 
+test('toolbar explains disabled send and keeps cancel beside progress', () => {
+  const hintAt = SOURCE.indexOf('id="gab-send-hint"');
+  const progressAt = SOURCE.indexOf('id="gab-progress"');
+  const cancelAt = SOURCE.indexOf("button('送信を中止', 'gab-cancel-send')", progressAt);
+
+  assert.ok(hintAt > 0);
+  assert.ok(progressAt > hintAt);
+  assert.ok(cancelAt > progressAt);
+  assert.ok(SOURCE.includes('ファイルを選択してください'));
+  assert.ok(SOURCE.includes('role="status" aria-live="polite"'));
+  assert.ok(SOURCE.includes("send.title = stats.count === 0 ? '送信するファイルを選択してください。' : ''"));
+});
+
+test('resolved row checkbox accessible names stay in Japanese', () => {
+  assert.ok(SOURCE.includes('フォルダを再帰的に選択:'));
+  assert.ok(SOURCE.includes('ファイルを選択:'));
+  assert.ok(SOURCE.includes("checkbox.setAttribute('aria-label'"));
+});
+
 test('fallback selection button is only shown when row matching needs help', () => {
   const start = SOURCE.indexOf('  function updateToolbar()');
   const end = SOURCE.indexOf('  function setProgress(', start);
