@@ -23,6 +23,7 @@
 
 - `docs/ARCHITECTURE.md` と `DEVELOPMENT.md` をv1.2.0時点のsend/navigation/uncertain behaviorへ同期。
 - release smoke testに連続送信競合の確認と結果記録欄を追加。
+- 大規模または長時間のfresh resolveについて、秘密情報を含めずfiles / nodes / max depth / durationだけをwarning logへ記録する安全な診断を追加。
 - 正式releaseで解決済みPython依存を`python-dependencies-v<version>.txt`として記録し、GitHub Release assetへ添付するようrelease workflowを更新。
 
 ## [1.2.0] - 2026-09-27
