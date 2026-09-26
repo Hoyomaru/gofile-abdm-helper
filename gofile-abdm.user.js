@@ -158,8 +158,12 @@
       #${TOOLBAR_ID} .gab-mode { display:inline-flex; align-items:center; gap:.35rem; font-size:.82rem; white-space:nowrap; cursor:pointer; }
       #${TOOLBAR_ID} .gab-mode input { width:1rem; height:1rem; margin:0; accent-color:#3b82f6; }
       #${TOOLBAR_ID} #gab-send { min-width:10.5rem; font-weight:700; }
+      #${TOOLBAR_ID} .gab-send-hint { font-size:.76rem; opacity:.72; white-space:nowrap; }
       #${TOOLBAR_ID} .gab-progress { width:100%; font-size:.82rem; opacity:.9; display:none; }
       #${TOOLBAR_ID} .gab-progress.visible { display:block; }
+      #${TOOLBAR_ID} .gab-progress-head { display:flex; align-items:flex-start; justify-content:space-between; gap:.65rem; }
+      #${TOOLBAR_ID} .gab-progress-head #gab-progress-text { min-width:0; flex:1; overflow-wrap:anywhere; }
+      #${TOOLBAR_ID} .gab-progress-head #gab-cancel-send { flex:0 0 auto; }
       #${TOOLBAR_ID} .gab-progress-bar { height:5px; border-radius:999px; overflow:hidden; background:color-mix(in srgb,currentColor 12%,transparent); margin-top:4px; }
       #${TOOLBAR_ID} .gab-progress-bar > span { display:block; height:100%; width:0%; background:currentColor; transition:width .15s ease; }
       .${CHECKBOX_CLASS} { margin-right:.5rem; flex:0 0 auto; width:1rem; height:1rem; accent-color:#3b82f6; }
@@ -223,11 +227,11 @@
         ${button('一覧から選択', 'gab-items')}
         ${button('設定', 'gab-settings')}
         ${button('失敗を再送', 'gab-retry-failed-toolbar')}
-        ${button('送信を中止', 'gab-cancel-send')}
       </div>
       <div class="gab-row" style="margin-top:.45rem">
         <div class="gab-url"><input id="gab-url" class="gab-input" type="text" spellcheck="false" aria-label="GoFile URL"></div>
         ${button('読み込み', 'gab-load')}
+        <span id="gab-send-hint" class="gab-send-hint">ファイルを選択してください</span>
         <div class="gab-send-options">
           <label class="gab-mode" for="gab-preserve-structure">
             <input id="gab-preserve-structure" type="checkbox" checked>
@@ -237,7 +241,10 @@
         </div>
       </div>
       <div id="gab-progress" class="gab-progress">
-        <div id="gab-progress-text">準備完了</div>
+        <div class="gab-progress-head">
+          <div id="gab-progress-text" role="status" aria-live="polite">準備完了</div>
+          ${button('送信を中止', 'gab-cancel-send')}
+        </div>
         <div class="gab-progress-bar"><span id="gab-progress-fill"></span></div>
       </div>
     `;
@@ -414,11 +421,14 @@
     }
 
     const send = toolbar.querySelector('#gab-send');
+    const sendHint = toolbar.querySelector('#gab-send-hint');
     const preserveStructure = toolbar.querySelector('#gab-preserve-structure');
     if (send) {
       send.disabled = state.sending || state.resolving || stats.count === 0;
       send.textContent = state.sending ? 'ABDMへ送信中…' : 'ABDMへ送信';
+      send.title = stats.count === 0 ? '送信するファイルを選択してください。' : '';
     }
+    if (sendHint) sendHint.classList.toggle('gab-hidden', state.sending || state.resolving || stats.count > 0);
     if (preserveStructure) preserveStructure.disabled = state.sending || state.resolving;
 
     const retry = toolbar.querySelector('#gab-retry-failed-toolbar');
@@ -445,7 +455,11 @@
     progress.classList.toggle('visible', visible);
     const text = document.getElementById('gab-progress-text');
     const fill = document.getElementById('gab-progress-fill');
-    if (text) text.textContent = total ? `ABDMへ送信中 ${current} / ${total}${label ? ` — ${label}` : ''}` : label;
+    if (text) {
+      const progressLabel = total ? `ABDMへ送信中 ${current} / ${total}${label ? ` — ${label}` : ''}` : label;
+      text.textContent = progressLabel;
+      text.title = progressLabel || '';
+    }
     if (fill) fill.style.width = total ? `${Math.max(0, Math.min(100, current / total * 100))}%` : '0%';
   }
 
