@@ -314,6 +314,7 @@ legacy compatibility として root 用 `password` plaintext も受け付けま�
 | 401 | `password_required`, `wrong_password` |
 | 403 | `content_access_denied` |
 | 404 | `not_found` |
+| 422 | `tree_limit_exceeded` |
 | 429 | `rate_limited` |
 | 502 | `website_token_rejected`, `gofile_error` |
 | 500 | `internal_error` |
