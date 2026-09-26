@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from abdm import ABDMClient
-from gofile import GoFileClient, WebsiteTokenRejected, sanitize_segment
+from gofile import GoFileClient, ResolvedNode, TreeLimitExceeded, WebsiteTokenRejected, sanitize_segment
 
 
 class WebsiteTokenRetryRegressionTests(unittest.TestCase):
@@ -171,6 +171,87 @@ class SanitizedCollisionRegressionTests(unittest.TestCase):
         self.assertEqual(len(set(path.casefold() for path in relative_folders)), 2)
         self.assertTrue(all(path.startswith("Root/") for path in relative_folders))
         self.assertTrue(any("~" in path for path in relative_folders))
+
+
+class ResolveTreeLimitRegressionTests(unittest.TestCase):
+    def test_depth_limit_returns_domain_error_before_python_recursion(self):
+        client = GoFileClient(session=Mock())
+        client.token = "guest-token"
+        ids = ["root123", "folder001", "folder002", "folder003", "folder004"]
+        tree = {}
+        for index, content_id in enumerate(ids):
+            children = {}
+            if index + 1 < len(ids):
+                child_id = ids[index + 1]
+                children["next"] = {"id": child_id, "name": child_id, "type": "folder"}
+            tree[content_id] = {
+                "id": content_id,
+                "name": content_id,
+                "type": "folder",
+                "childrenCount": len(children),
+                "children": children,
+            }
+        client.fetch_folder = lambda content_id, password=None: tree[content_id]
+
+        with patch("gofile.MAX_RESOLVE_DEPTH", 3):
+            with self.assertRaises(TreeLimitExceeded) as caught:
+                client.resolve("root123")
+
+        self.assertIn("depth limit", str(caught.exception))
+
+    def test_node_limit_accepts_boundary_and_rejects_next_node(self):
+        def make_client(file_count):
+            client = GoFileClient(session=Mock())
+            client.token = "guest-token"
+            client.fetch_folder = lambda content_id, password=None: {
+                "id": content_id,
+                "name": "Root",
+                "type": "folder",
+                "childrenCount": file_count,
+                "children": {
+                    f"f{index}": {
+                        "id": f"file{index:03d}",
+                        "name": f"file{index}.bin",
+                        "type": "file",
+                        "size": 1,
+                        "link": f"https://cold.gofile.io/file{index}",
+                    }
+                    for index in range(file_count)
+                },
+            }
+            return client
+
+        with patch("gofile.MAX_RESOLVE_NODES", 3):
+            result = make_client(2).resolve("root123")
+            self.assertEqual(result.root.file_count, 2)
+            with self.assertRaises(TreeLimitExceeded) as caught:
+                make_client(3).resolve("root123")
+
+        self.assertIn("node limit", str(caught.exception))
+
+    def test_public_tree_serialization_is_iterative_for_deep_constructed_tree(self):
+        node = ResolvedNode(
+            key="file-key",
+            id="file001",
+            type="file",
+            name="leaf.bin",
+            size=7,
+            relative_path="leaf.bin",
+            file_keys=["file-key"],
+        )
+        for depth in range(1500):
+            node = ResolvedNode(
+                key=f"folder-key-{depth}",
+                id=f"folder{depth:04d}",
+                type="folder",
+                name=f"folder{depth}",
+                children=[node],
+                file_keys=["file-key"],
+            )
+
+        payload = node.to_public_dict()
+        self.assertEqual(payload["file_count"], 1)
+        self.assertEqual(payload["total_size"], 7)
 
 
 if __name__ == "__main__":
