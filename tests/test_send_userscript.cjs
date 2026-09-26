@@ -31,6 +31,23 @@ function runtime() {
   return window.__GAB_TEST_API__;
 }
 
+test('toolbar uses one primary send action with a structure mode checkbox', () => {
+  assert.ok(SOURCE.includes('id="gab-preserve-structure"'));
+  assert.ok(SOURCE.includes("button('ABDMへ送信', 'gab-send', true)"));
+  assert.ok(SOURCE.includes("sendSelected(false, preserveStructure)"));
+  assert.ok(!SOURCE.includes("id='gab-send-flat'"));
+  assert.ok(!SOURCE.includes('id="gab-send-flat"'));
+  assert.ok(!SOURCE.includes("button('Send Flat', 'gab-send-flat')"));
+});
+
+test('fallback selection button is only shown when row matching needs help', () => {
+  const start = SOURCE.indexOf('  function updateToolbar()');
+  const end = SOURCE.indexOf('  function setProgress(', start);
+  const block = SOURCE.slice(start, end);
+  assert.ok(block.includes('const fallbackNeeded = Boolean(state.root) && state.unmatched > 0'));
+  assert.ok(block.includes("items.classList.toggle('gab-hidden', !fallbackNeeded)"));
+});
+
 test('send operation becomes stale when source, generation, or cancellation changes', () => {
   const api = runtime();
   const op = {
