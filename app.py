@@ -6,6 +6,7 @@ import re
 import secrets
 import threading
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -38,6 +39,15 @@ PASSWORD_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
+VERSION_PATH = Path(__file__).resolve().with_name("VERSION")
+
+
+def _helper_version() -> str:
+    try:
+        value = VERSION_PATH.read_text(encoding="utf-8").strip()
+        return value or "unknown"
+    except OSError:
+        return "unknown"
 
 
 @dataclass
@@ -189,6 +199,38 @@ def health():
 def abdm_status():
     connected = ABDMClient().status()
     return jsonify({"ok": True, "connected": connected})
+
+
+@app.get("/api/diagnostics")
+def diagnostics():
+    try:
+        queues = ABDMClient().queues()
+        abdm = {
+            "ok": True,
+            "connected": True,
+            "queue_count": len(queues),
+            "message": "AB Download Managerへ接続できています。",
+        }
+    except ABDMError:
+        abdm = {
+            "ok": False,
+            "connected": False,
+            "queue_count": 0,
+            "message": "AB Download Managerへ接続できません。ABDMが起動しているか確認してください。",
+        }
+
+    return jsonify(
+        {
+            "ok": True,
+            "helper": {
+                "ok": True,
+                "service": "gofile-abdm-helper",
+                "version": _helper_version(),
+                "message": "Python Helperへ接続できています。",
+            },
+            "abdm": abdm,
+        }
+    )
 
 
 @app.get("/api/abdm/queues")
