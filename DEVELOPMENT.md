@@ -261,6 +261,18 @@ tray health check。marker 不要。
 
 tray は HTTP 200 だけでなく `service` identity も確認し、別 process の `/health` を Helper と誤認しないようにします。
 
+### `GET /api/diagnostics`
+
+Userscript Settings の自己診断用です。
+
+- Helper自身の `service` / `version`
+- ABDM `GET /queues` の接続可否
+- Queue件数
+
+だけを返します。GoFile token、password、direct URL、保存先pathなどのsecret / transient dataを診断レスポンスへ追加しないでください。
+
+ABDM offlineはendpoint自体のfailureではないためHTTP 200で返し、`helper.ok=true` と `abdm.ok=false` を分離します。これによりUIで「Helperが死んでいる」のか「ABDMだけoffline」なのかを判別できます。
+
 ### `GET /api/abdm/status`
 
 ABDM `GET /queues` を使って connection を確認。
