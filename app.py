@@ -23,6 +23,7 @@ from gofile import (
     PasswordRequired,
     RateLimited,
     ResolveResult,
+    TreeLimitExceeded,
     WebsiteTokenRejected,
     WrongPassword,
     parse_content_id,
@@ -138,9 +139,9 @@ def _resolve_payload(result: ResolveResult, resolve_id: str, *, cached: bool):
             "content_id": result.content_id,
             "root_name": result.root_name,
             "root": public_root,
-            "top_level": [child.to_public_dict() for child in result.root.children],
-            "file_count": result.root.file_count,
-            "total_size": result.root.total_size,
+            "top_level": public_root["children"],
+            "file_count": public_root["file_count"],
+            "total_size": public_root["total_size"],
         }
     )
 
@@ -297,6 +298,8 @@ def gofile_resolve():
         return _api_error(str(exc), exc.code, 404)
     except RateLimited as exc:
         return _api_error(str(exc), exc.code, 429)
+    except TreeLimitExceeded as exc:
+        return _api_error(str(exc), exc.code, 422)
     except WebsiteTokenRejected as exc:
         return _api_error(str(exc), exc.code, 502)
     except GoFileError as exc:
