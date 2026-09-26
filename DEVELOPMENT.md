@@ -29,7 +29,7 @@
 - GitHub Release title: `GoFile ABDM Helper v1.2.0`
 - GitHub Actions / CI: `.github/workflows/tests.yml` を導入済み
 - 専用 build / binary artifact: なし
-- custom Release asset: なし。GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を利用可能
+- `v1.2.0` の custom Release asset: なし。今後の正式 release は解決済みPython依存スナップショットを追加し、GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を主配布物として維持
 
 `v1.2.0` 公開後の `main` に追加する code / test / documentation change は `CHANGELOG.md` の `[Unreleased]` で管理します。公開済み tag は移動しません。
 
@@ -393,6 +393,8 @@ retry policy:
 - 上限超過: `422 tree_limit_exceeded`
 
 tree serialization と size / file count 集計は反復処理を使い、深い tree で Python の再帰上限へ依存しないようにします。resolve traversal 自体は安全上限の範囲で再帰し、上限超過を明示的な domain error にします。
+
+Fresh resolve が 10,000 node 以上、または30秒以上かかった場合は、files / nodes / max depth / duration だけを warning log に記録します。URL、content ID、token、Cookie、password、direct URL、保存先は診断logへ含めません。
 
 この安全条件を速度目的で弱めないでください。
 
