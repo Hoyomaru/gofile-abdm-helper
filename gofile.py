@@ -19,6 +19,8 @@ CONTENT_TIMEOUT = 45
 PAGE_SIZE = 1000
 WT_WINDOW_SECONDS = 14_400
 DEFAULT_REQUEST_INTERVAL = 0.75
+MAX_RESOLVE_DEPTH = 128
+MAX_RESOLVE_NODES = 100_000
 
 # This is not a fixed Website Token. It is the current salt used to derive a
 # per-account, per-time-window X-Website-Token. The value was verified against
@@ -80,6 +82,10 @@ class ContentNotFound(GoFileError):
     code = "not_found"
 
 
+class TreeLimitExceeded(GoFileError):
+    code = "tree_limit_exceeded"
+
+
 @dataclass
 class ResolvedFile:
     key: str
@@ -107,29 +113,59 @@ class ResolvedNode:
 
     @property
     def total_size(self) -> int:
-        if self.type == "file":
-            return self.size
-        return sum(child.total_size for child in self.children)
+        total = 0
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            if node.type == "file":
+                total += node.size
+            else:
+                stack.extend(node.children)
+        return total
 
     @property
     def file_count(self) -> int:
-        if self.type == "file":
-            return 1
-        return sum(child.file_count for child in self.children)
+        count = 0
+        stack = [self]
+        while stack:
+            node = stack.pop()
+            if node.type == "file":
+                count += 1
+            else:
+                stack.extend(node.children)
+        return count
 
     def to_public_dict(self) -> Dict[str, Any]:
-        return {
-            "key": self.key,
-            "id": self.id,
-            "type": self.type,
-            "name": self.name,
-            "size": self.size,
-            "total_size": self.total_size,
-            "file_count": self.file_count,
-            "relative_path": self.relative_path,
-            "file_keys": list(self.file_keys),
-            "children": [child.to_public_dict() for child in self.children],
-        }
+        built: Dict[int, Dict[str, Any]] = {}
+        stack: list[tuple["ResolvedNode", bool]] = [(self, False)]
+        while stack:
+            node, expanded = stack.pop()
+            if not expanded:
+                stack.append((node, True))
+                for child in reversed(node.children):
+                    stack.append((child, False))
+                continue
+
+            children = [built[id(child)] for child in node.children]
+            if node.type == "file":
+                total_size = node.size
+                file_count = 1
+            else:
+                total_size = sum(child["total_size"] for child in children)
+                file_count = sum(child["file_count"] for child in children)
+            built[id(node)] = {
+                "key": node.key,
+                "id": node.id,
+                "type": node.type,
+                "name": node.name,
+                "size": node.size,
+                "total_size": total_size,
+                "file_count": file_count,
+                "relative_path": node.relative_path,
+                "file_keys": list(node.file_keys),
+                "children": children,
+            }
+        return built[id(self)]
 
 
 @dataclass
@@ -460,6 +496,16 @@ class GoFileClient:
             if root_password_hash:
                 credentials[content_id] = root_password_hash
 
+        node_count = 0
+
+        def claim_node() -> None:
+            nonlocal node_count
+            node_count += 1
+            if node_count > MAX_RESOLVE_NODES:
+                raise TreeLimitExceeded(
+                    f"GoFile share exceeds the safe resolve node limit ({MAX_RESOLVE_NODES})."
+                )
+
         def walk(
             folder_id: str,
             parent_rel: str,
@@ -468,9 +514,15 @@ class GoFileClient:
             parent_password_hash: Optional[str] = None,
             known_name: Optional[str] = None,
             known_safe_name: Optional[str] = None,
+            depth: int = 0,
         ) -> ResolvedNode:
             if folder_id in visited:
                 raise GoFileError("Recursive folder loop detected in GoFile content.")
+            if depth > MAX_RESOLVE_DEPTH:
+                raise TreeLimitExceeded(
+                    f"GoFile share exceeds the safe folder depth limit ({MAX_RESOLVE_DEPTH})."
+                )
+            claim_node()
             visited.add(folder_id)
             folder_password_hash = credentials.get(folder_id) or parent_password_hash
             expected_name = str(known_name or folder_id)
@@ -547,6 +599,7 @@ class GoFileClient:
                             folder_password_hash,
                             child_name,
                             child_safe_name,
+                            depth + 1,
                         )
                         node.children.append(child_node)
                         node.file_keys.extend(child_node.file_keys)
@@ -555,6 +608,7 @@ class GoFileClient:
                     if child_type != "file":
                         continue
 
+                    claim_node()
                     relative_path = f"{folder_rel}/{child_name}" if folder_rel else child_name
                     file_key = self._node_key(child_id, relative_path)
                     size = int(child.get("size") or 0)
