@@ -16,20 +16,22 @@
 
 ## 1. 現在の状態
 
-基準日: **2026-09-15**
+基準日: **2026-09-27**
 
 - repository: `Hoyomaru/gofile-abdm-helper`
 - default branch: `main`
 - 正式リリース体系: **`v1.0.0` から開始**
-- `VERSION`: `1.0.0`
+- `VERSION`: `1.2.0`
+- `v1.2.0`: **2026-09-27 に公開済み**。送信UI簡略化、Windows one-step setup、自己診断を含む
+- `v1.2.0` tag target: `8f19bd750e27adc182251bdee9d008423a87cbcb`
+- `v1.1.0`: **2026-09-15 に公開済み**。reliability / recovery 改善
 - `v1.0.0`: **2026-09-14 に公開済み**の初回正式リリース
-- `v1.0.0` tag target: `e4fcf3a2ce0cee18f9320a9ff5df683acf78912a`
-- GitHub Release title: `GoFile ABDM Helper v1.0.0`
+- GitHub Release title: `GoFile ABDM Helper v1.2.0`
 - GitHub Actions / CI: `.github/workflows/tests.yml` を導入済み
 - 専用 build / binary artifact: なし
-- custom Release asset: なし。GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を利用可能
+- `v1.2.0` の custom Release asset: なし。今後の正式 release は解決済みPython依存スナップショットを追加し、GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を主配布物として維持
 
-`v1.0.0` 公開後の `main` には次回 Release 向けの code / test / documentation change が入り、`CHANGELOG.md` の `[Unreleased]` で管理します。公開済み `v1.0.0` tag は移動しません。
+`v1.2.0` 公開後の `main` に追加する code / test / documentation change は `CHANGELOG.md` の `[Unreleased]` で管理します。公開済み tag は移動しません。
 
 ### 過去の version 名について
 
@@ -157,6 +159,8 @@ RESOLVING
 ```text
 READY
  ↓
+RESERVED / PREFLIGHT
+ ↓
 CHECK_ABDM
  ↓
 SENDING (normally one file per Helper request)
@@ -169,7 +173,7 @@ RESULT
  └─ uncertain → uncertainResults → automatic retry 対象外
 ```
 
-`isCurrentSend()` は active operation / generation / source URL / cancelled flag を確認します。古い operation response は新しい page state を更新しません。
+`sendSelected()` は最初の `await` より前に active operation を予約して `state.sending=true` にします。これにより ABDM 接続確認中の連続操作も同じ send guard で排他されます。`isCurrentSend()` は active operation / generation / source URL / cancelled flag を確認し、古い operation response は新しい page state を更新しません。
 
 send progress は ABDM への task registration progress です。
 
@@ -310,6 +314,7 @@ legacy compatibility として root 用 `password` plaintext も受け付けま�
 | 401 | `password_required`, `wrong_password` |
 | 403 | `content_access_denied` |
 | 404 | `not_found` |
+| 422 | `tree_limit_exceeded` |
 | 429 | `rate_limited` |
 | 502 | `website_token_rejected`, `gofile_error` |
 | 500 | `internal_error` |
@@ -378,12 +383,19 @@ retry policy:
 
 一般的な network timeout と time-window fallback を同じ retry counter に結び付けないでください。
 
-### Rate limit
+### Rate limit / resolve limits
 
 - default pacing: 0.75 sec
 - HTTP 429 / API rate limit: immediate stop
 - blind automatic retry: しない
 - recursive resolves: process 内 serialize
+- nested folder depth: max 128
+- resolved node count: max 100,000
+- 上限超過: `422 tree_limit_exceeded`
+
+tree serialization と size / file count 集計は反復処理を使い、深い tree で Python の再帰上限へ依存しないようにします。resolve traversal 自体は安全上限の範囲で再帰し、上限超過を明示的な domain error にします。
+
+Fresh resolve が 10,000 node 以上、または30秒以上かかった場合は、files / nodes / max depth / duration だけを warning log に記録します。URL、content ID、token、Cookie、password、direct URL、保存先は診断logへ含めません。
 
 この安全条件を速度目的で弱めないでください。
 
@@ -475,6 +487,7 @@ user-selected `save_root` 自体は separator normalization 以上に勝手に�
 11. stale resolve / send response で新しい navigation state を上書きしない。
 12. ABDM POST の結果不明時に automatic resend を追加しない。idempotency を設計してから行う。
 13. cancellation safety を犠牲にする大きな send batch を、Helper-side cancel / idempotency なしで追加しない。
+14. resolve tree の depth / node safety limit を、実測根拠なしに拡大・撤廃しない。
 
 「便利だから」という理由だけでこれらを弱めないでください。
 

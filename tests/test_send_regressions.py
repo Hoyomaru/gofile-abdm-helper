@@ -5,7 +5,7 @@ import requests
 
 import app as app_module
 from abdm import ABDMClient, ABDMUncertainError
-from gofile import ResolvedFile, ResolvedNode, ResolveResult
+from gofile import ResolvedFile, ResolvedNode, ResolveResult, TreeLimitExceeded
 
 
 class ABDMSendOutcomeTests(unittest.TestCase):
@@ -52,6 +52,57 @@ class HelperSendRegressionTests(unittest.TestCase):
     @property
     def headers(self):
         return {"X-GoFile-ABDM": "1", "Content-Type": "application/json"}
+
+    def test_large_resolve_logs_only_safe_aggregate_metrics(self):
+        root = ResolvedNode(
+            key="root-key",
+            id="root123",
+            type="folder",
+            name="Root",
+            children=[],
+            file_keys=[],
+        )
+        resolved = ResolveResult(
+            content_id="root123",
+            root_name="Root",
+            root=root,
+            files={},
+            node_count=10_000,
+            max_depth=4,
+        )
+
+        with patch.object(app_module._gofile_client, "resolve", return_value=resolved), \
+             patch.object(app_module.app.logger, "warning") as warning:
+            response = self.client.post(
+                "/api/gofile/resolve",
+                headers={"X-GoFile-ABDM": "1"},
+                json={"url": "root123"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        warning.assert_called_once()
+        logged = " ".join(str(value) for value in warning.call_args.args)
+        self.assertIn("files=%d nodes=%d max_depth=%d duration_ms=%d", logged)
+        self.assertNotIn("root123", logged)
+        self.assertNotIn("https://", logged)
+        self.assertNotIn("accountToken", logged)
+
+    def test_resolve_tree_limit_is_explicit_422(self):
+        with patch.object(
+            app_module._gofile_client,
+            "resolve",
+            side_effect=TreeLimitExceeded("GoFile share exceeds the safe resolve node limit (100000)."),
+        ):
+            response = self.client.post(
+                "/api/gofile/resolve",
+                headers={"X-GoFile-ABDM": "1"},
+                json={"url": "root123"},
+            )
+
+        self.assertEqual(response.status_code, 422)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "tree_limit_exceeded")
 
     def test_send_requires_json_object(self):
         for body in ("[]", '"text"', "7", "null"):

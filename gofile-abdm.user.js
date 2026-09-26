@@ -1236,33 +1236,13 @@
       state.lastSendQueueId = queueId;
     }
 
-    if (!retryOnly && !state.resolveId && state.provisionalSelectedIds.size) {
-      await resolveContent(true);
-      if (!state.resolveId && state.provisionalSelectedIds.size) {
-        return toast('Selection kept. GoFile resolve is still unavailable; try Send again later.', 'warning');
-      }
-    }
-
-    const initialSourceUrl = state.sourceUrl;
-    const initialKeys = retryOnly ? state.failedResults.map((item) => item.key).filter(Boolean) : selectedFileKeys();
-    let pendingIds = retryOnly
-      ? state.failedResults.map((item) => item.id).filter(Boolean)
-      : fileIdsForKeys(initialKeys);
-
-    if (!pendingIds.length) return toast(retryOnly ? 'No failed items to retry.' : 'No files selected.', 'warning');
-    if (!state.resolveId) return toast('GoFile content could not be resolved yet.', 'warning');
-
-    const connected = await checkABDM();
-    if (!connected) return toast('AB Download Manager is offline.', 'error');
-    if (state.sourceUrl !== initialSourceUrl) return toast('Page changed before sending started.', 'warning');
-
     const operation = {
       generation: state.sendGeneration + 1,
-      sourceUrl: initialSourceUrl,
-      resolveId: state.resolveId,
+      sourceUrl: state.sourceUrl,
+      resolveId: null,
       preserveStructure,
       queueId,
-      saveRoot: GM_getValue(STORAGE.lastSaveFolder, ''),
+      saveRoot: '',
       success: 0,
       failed: [],
       uncertain: [],
@@ -1272,80 +1252,125 @@
     state.sendGeneration = operation.generation;
     state.activeSend = operation;
     state.sending = true;
-    state.failedFileKeys = [];
-    state.failedResults = [];
-    state.uncertainResults = [];
     updateToolbar();
 
-    let index = 0;
-    while (index < pendingIds.length && isCurrentSend(operation)) {
-      const contentId = pendingIds[index];
-      const key = fileKeyForContentId(contentId);
-      const node = key ? state.nodeByKey.get(key) : null;
-      if (!key || !node) {
-        operation.failed.push(resultEntry(contentId, key, node, 'File could not be mapped after resolving.'));
-        index += 1;
-        continue;
+    try {
+      if (!retryOnly && !state.resolveId && state.provisionalSelectedIds.size) {
+        await resolveContent(true);
+        if (!isCurrentSend(operation)) return;
+        if (!state.resolveId && state.provisionalSelectedIds.size) {
+          toast('Selection kept. GoFile resolve is still unavailable; try Send again later.', 'warning');
+          return;
+        }
       }
 
-      setProgress(index, pendingIds.length, node.name || '');
-      try {
-        const data = await gmRequest('POST', '/api/abdm/send', {
-          resolve_id: operation.resolveId,
-          file_keys: [key],
-          save_root: operation.saveRoot,
-          preserve_structure: operation.preserveStructure,
-          queue_id: operation.queueId,
-        }, 30000);
+      if (!isCurrentSend(operation)) return;
+      const initialKeys = retryOnly ? state.failedResults.map((item) => item.key).filter(Boolean) : selectedFileKeys();
+      let pendingIds = retryOnly
+        ? state.failedResults.map((item) => item.id).filter(Boolean)
+        : fileIdsForKeys(initialKeys);
 
-        if (!isCurrentSend(operation)) return;
-        const result = data.results?.[0];
-        if (result?.ok) {
-          operation.success += 1;
-        } else if (result?.uncertain) {
-          operation.uncertain.push(resultEntry(contentId, key, node, result.error, true));
-        } else {
-          operation.failed.push(resultEntry(contentId, key, node, result?.error));
-        }
-      } catch (error) {
-        if (!isCurrentSend(operation)) return;
-        if (error.code === 'resolve_expired') {
-          toast('Resolved GoFile session expired. Re-resolving and preserving the remaining selection…', 'warning');
-          const remainingIds = pendingIds.slice(index);
-          const resolved = await resolveContent(true);
-          if (!isCurrentSend(operation)) return;
-          if (!resolved || !state.resolveId) {
-            for (const remainingId of remainingIds) {
-              const remainingKey = fileKeyForContentId(remainingId);
-              const remainingNode = remainingKey ? state.nodeByKey.get(remainingKey) : null;
-              operation.failed.push(resultEntry(remainingId, remainingKey, remainingNode, 'Could not re-resolve GoFile content.'));
-            }
-            break;
-          }
-          operation.resolveId = state.resolveId;
-          pendingIds = remainingIds;
-          index = 0;
+      if (!pendingIds.length) {
+        toast(retryOnly ? 'No failed items to retry.' : 'No files selected.', 'warning');
+        return;
+      }
+      if (!state.resolveId) {
+        toast('GoFile content could not be resolved yet.', 'warning');
+        return;
+      }
+
+      operation.resolveId = state.resolveId;
+      operation.saveRoot = GM_getValue(STORAGE.lastSaveFolder, '');
+      setProgress(0, 0, 'AB Download Managerへの接続を確認中…', true);
+
+      const connected = await checkABDM();
+      if (!isCurrentSend(operation)) return;
+      if (!connected) {
+        toast('AB Download Manager is offline.', 'error');
+        return;
+      }
+
+      state.failedFileKeys = [];
+      state.failedResults = [];
+      state.uncertainResults = [];
+      updateToolbar();
+
+      let index = 0;
+      while (index < pendingIds.length && isCurrentSend(operation)) {
+        const contentId = pendingIds[index];
+        const key = fileKeyForContentId(contentId);
+        const node = key ? state.nodeByKey.get(key) : null;
+        if (!key || !node) {
+          operation.failed.push(resultEntry(contentId, key, node, 'File could not be mapped after resolving.'));
+          index += 1;
           continue;
         }
-        if (['helper_timeout', 'helper_offline', 'helper_aborted'].includes(error.code)) {
-          operation.uncertain.push(resultEntry(contentId, key, node, error.message, true));
-        } else {
-          operation.failed.push(resultEntry(contentId, key, node, error.message));
+
+        setProgress(index, pendingIds.length, node.name || '');
+        try {
+          const data = await gmRequest('POST', '/api/abdm/send', {
+            resolve_id: operation.resolveId,
+            file_keys: [key],
+            save_root: operation.saveRoot,
+            preserve_structure: operation.preserveStructure,
+            queue_id: operation.queueId,
+          }, 30000);
+
+          if (!isCurrentSend(operation)) return;
+          const result = data.results?.[0];
+          if (result?.ok) {
+            operation.success += 1;
+          } else if (result?.uncertain) {
+            operation.uncertain.push(resultEntry(contentId, key, node, result.error, true));
+          } else {
+            operation.failed.push(resultEntry(contentId, key, node, result?.error));
+          }
+        } catch (error) {
+          if (!isCurrentSend(operation)) return;
+          if (error.code === 'resolve_expired') {
+            toast('Resolved GoFile session expired. Re-resolving and preserving the remaining selection…', 'warning');
+            const remainingIds = pendingIds.slice(index);
+            const resolved = await resolveContent(true);
+            if (!isCurrentSend(operation)) return;
+            if (!resolved || !state.resolveId) {
+              for (const remainingId of remainingIds) {
+                const remainingKey = fileKeyForContentId(remainingId);
+                const remainingNode = remainingKey ? state.nodeByKey.get(remainingKey) : null;
+                operation.failed.push(resultEntry(remainingId, remainingKey, remainingNode, 'Could not re-resolve GoFile content.'));
+              }
+              break;
+            }
+            operation.resolveId = state.resolveId;
+            pendingIds = remainingIds;
+            index = 0;
+            continue;
+          }
+          if (['helper_timeout', 'helper_offline', 'helper_aborted'].includes(error.code)) {
+            operation.uncertain.push(resultEntry(contentId, key, node, error.message, true));
+          } else {
+            operation.failed.push(resultEntry(contentId, key, node, error.message));
+          }
         }
+
+        index += 1;
+        setProgress(index, pendingIds.length, node.name || '');
       }
 
-      index += 1;
-      setProgress(index, pendingIds.length, node.name || '');
+      if (!isCurrentSend(operation)) return;
+      state.activeSend = null;
+      state.sending = false;
+      state.failedResults = operation.failed;
+      state.uncertainResults = operation.uncertain;
+      state.failedFileKeys = operation.failed.map((item) => item.key).filter(Boolean);
+      updateToolbar();
+      showSendResult(operation.success, operation.failed, operation.uncertain);
+    } finally {
+      if (state.activeSend === operation) {
+        state.activeSend = null;
+        state.sending = false;
+        updateToolbar();
+      }
     }
-
-    if (!isCurrentSend(operation)) return;
-    state.activeSend = null;
-    state.sending = false;
-    state.failedResults = operation.failed;
-    state.uncertainResults = operation.uncertain;
-    state.failedFileKeys = operation.failed.map((item) => item.key).filter(Boolean);
-    updateToolbar();
-    showSendResult(operation.success, operation.failed, operation.uncertain);
   }
 
   function showSendResult(success, failedResults, uncertainResults) {
@@ -1458,6 +1483,7 @@
       fileIdsForKeys,
       fileKeyForContentId,
       remapFileIdsToKeys,
+      sendSelected,
       openModal,
       closeModal,
     };

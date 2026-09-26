@@ -23,6 +23,7 @@ from gofile import (
     PasswordRequired,
     RateLimited,
     ResolveResult,
+    TreeLimitExceeded,
     WebsiteTokenRejected,
     WrongPassword,
     parse_content_id,
@@ -35,6 +36,8 @@ API_MARKER_VALUE = "1"
 CACHE_TTL_SECONDS = 20 * 60
 MAX_SEND_ITEMS = 1000
 MAX_PASSWORD_HASHES = 1000
+LARGE_RESOLVE_NODE_THRESHOLD = 10_000
+LARGE_RESOLVE_SECONDS_THRESHOLD = 30.0
 PASSWORD_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 app = Flask(__name__)
@@ -138,9 +141,9 @@ def _resolve_payload(result: ResolveResult, resolve_id: str, *, cached: bool):
             "content_id": result.content_id,
             "root_name": result.root_name,
             "root": public_root,
-            "top_level": [child.to_public_dict() for child in result.root.children],
-            "file_count": result.root.file_count,
-            "total_size": result.root.total_size,
+            "top_level": public_root["children"],
+            "file_count": public_root["file_count"],
+            "total_size": public_root["total_size"],
         }
     )
 
@@ -260,6 +263,7 @@ def gofile_resolve():
     except ValueError as exc:
         return _api_error(str(exc), "invalid_password_hashes", 400)
 
+    resolve_started_at = time.monotonic()
     try:
         content_id = parse_content_id(source)
         effective_password = password if password != "" else None
@@ -284,6 +288,18 @@ def gofile_resolve():
                     _source_cache_put(source_key, result)
 
         resolve_id = _cache_put(result)
+        elapsed_seconds = time.monotonic() - resolve_started_at
+        if not cached and (
+            result.node_count >= LARGE_RESOLVE_NODE_THRESHOLD
+            or elapsed_seconds >= LARGE_RESOLVE_SECONDS_THRESHOLD
+        ):
+            app.logger.warning(
+                "Large GoFile resolve completed: files=%d nodes=%d max_depth=%d duration_ms=%d",
+                len(result.files),
+                result.node_count,
+                result.max_depth,
+                round(elapsed_seconds * 1000),
+            )
         return _resolve_payload(result, resolve_id, cached=cached)
     except InvalidContent as exc:
         return _api_error(str(exc), exc.code, 400)
@@ -297,6 +313,8 @@ def gofile_resolve():
         return _api_error(str(exc), exc.code, 404)
     except RateLimited as exc:
         return _api_error(str(exc), exc.code, 429)
+    except TreeLimitExceeded as exc:
+        return _api_error(str(exc), exc.code, 422)
     except WebsiteTokenRejected as exc:
         return _api_error(str(exc), exc.code, 502)
     except GoFileError as exc:
