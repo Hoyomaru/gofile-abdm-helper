@@ -256,7 +256,7 @@ GitHub Release は同じ tag を選びます。
 - title / notes / tag が同じ version を指すことを確認する
 - 公開済み tag を後から移動しない
 
-source-only release では GitHub-generated source archive だけで構いません。
+source-only release でも GitHub-generated source archive を主配布物とします。`python-dependencies-v<version>.txt` は実行環境再現・障害調査用の運用assetであり、installerやbinary配布物ではありません。
 
 ### v1.1.0 release notes の要点
 
