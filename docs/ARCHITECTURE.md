@@ -324,6 +324,33 @@ resolve failure 中も DOM に content ID があれば provisional selection を
 
 ---
 
+## 10. Windows setup / Tray
+
+`setup-windows.cmd` は `setup-windows.ps1` の薄いlauncherです。setupはproject直下の `.venv` だけを変更し、system-wide package installは行いません。
+
+```text
+setup-windows.cmd
+  ↓
+setup-windows.ps1
+  ├─ Python 3.10+ detection
+  ├─ .venv creation
+  ├─ pip install -r requirements.txt
+  ├─ dependency import verification
+  └─ .venv pythonw → tray.py
+```
+
+`start-tray.cmd` は `.venv\\Scripts\\pythonw.exe` が存在すれば優先し、なければPATH上の `pythonw` にfallbackします。trayのStart with Windowsは、実際にtrayを起動したPython executableをregistryへ保存するため、setup経由では `.venv` のPythonへ固定されます。
+
+### Self-diagnostics
+
+`GET /api/diagnostics` はlocalhost Helperの診断境界です。ABDMの `GET /queues` だけをread-only probeとして使用します。
+
+- Helper正常 / ABDM正常 → 両方OK
+- Helper正常 / ABDM offline → HTTP 200のままABDMだけNG
+- Helper自体へ接続不能 → Userscriptのtransport errorとして判定
+
+diagnosticsからGoFile APIへrequestは送らず、password / token / direct URL / save pathを返しません。
+
 ## 10. Windows Tray
 
 `tray.py` は Windows only。

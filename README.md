@@ -45,6 +45,8 @@ AB Download Manager (127.0.0.1:15151)
 - recursive resolve の直列化と request pacing
 - Windows tray / Helper 自動監視・hung process recovery
 - Windows user login 時の自動起動
+- Windows向け1ステップ setup（ローカル .venv 作成・依存導入・tray起動）
+- Settings の自己診断で Helper / ABDM / Queue 接続を一括確認
 - GitHub Actions による Python / Userscript regression test
 
 ### このツールが解決する問題
@@ -213,21 +215,32 @@ Helper は次へ接続します。
 
 ABDM が起動していないと、Userscript 側では ABDM へ task を登録できません。
 
-## 3. Python 3.10+ と dependencies を用意
+## 3. Windows setup を実行（推奨）
 
-まず Python version を確認します。
+Python **3.10+** をインストールしたあと、展開したフォルダで **`setup-windows.cmd` をダブルクリック**します。
+
+setup は次を自動で行います。
+
+1. Python 3.10+ を確認
+2. project直下へ `.venv` を作成
+3. `requirements.txt` の依存packageをインストール/更新
+4. Flask / requests / pystray / Pillow をimportできることを確認
+5. `.venv\Scripts\pythonw.exe` からtrayを起動
+
+管理者権限やsystem-wide Python package installは不要です。以後 `start-tray.cmd` も `.venv` があればそのPythonを優先します。
+
+PowerShellからsetupだけ行い、trayを起動したくない場合:
+
+```powershell
+.\setup-windows.ps1 -NoLaunch
+```
+
+### 手動でdependenciesを用意する場合
+
+setup scriptを使わない場合は、Python versionを確認してから従来どおり実行できます。
 
 ```bash
 python --version
-```
-
-`Python 3.10` 以上であることを確認してください。
-
-`python` command が見つからない場合は Python をインストールし、terminal から `python` を実行できる状態にします。
-
-展開した project directory で次を実行します。
-
-```bash
 python -m pip install -r requirements.txt
 ```
 
@@ -235,11 +248,7 @@ python -m pip install -r requirements.txt
 
 ### Windows: tray mode（推奨）
 
-`start-tray.cmd` をダブルクリックするか、project directory で次を実行します。
-
-```text
-start-tray.cmd
-```
+通常は `setup-windows.cmd` 完了時にtrayが起動します。後から起動する場合は `start-tray.cmd` をダブルクリックします。
 
 `tray.py` が `pythonw.exe` で起動し、terminal を常時表示せず Helper を監視します。
 
@@ -317,12 +326,14 @@ Userscript metadata に `@updateURL` / `@downloadURL` はないため、将来�
 ## 6. 正常に導入できたか確認
 
 1. AB Download Manager を起動する
-2. `start-tray.cmd` を起動する
-3. tray menu で Helper が **Running** になっていることを確認する
-4. browser で `http://127.0.0.1:8765/health` が応答することを確認する
-5. GoFile の共有 URL を開く
-6. GoFile page に ABDM toolbar が追加されることを確認する
-7. toolbar で ABDM が接続状態になることを確認する
+2. `setup-windows.cmd` または `start-tray.cmd` でtrayを起動する
+3. GoFile の共有 URL を開く
+4. GoFile page に ABDM toolbar が追加されることを確認する
+5. toolbarの **設定 → 自己診断** を実行する
+6. **Python Helper ✓** と **AB Download Manager ✓** が表示されることを確認する
+7. 必要ならtray menuで **Start with Windows** を有効にする
+
+自己診断はHelper自身のversionと、ABDMの `/queues` 接続・Queue件数を確認します。Helperへ接続できない場合は、setup/tray起動を案内します。
 
 GoFile share の例:
 
@@ -404,6 +415,17 @@ gofile_abdm_presets
 ```
 
 password はこの GM storage へ永続保存しません。
+
+### 自己診断
+
+Settings の **自己診断** は `GET /api/diagnostics` を利用し、次を確認します。
+
+- Python Helperへ接続できるか
+- Helper versionを取得できるか
+- AB Download Managerの `GET /queues` が成功するか
+- 利用可能なQueue件数
+
+ABDMがofflineでもdiagnostics endpoint自体はHTTP 200で応答し、Helper正常 / ABDM異常を分けて表示します。credential、GoFile token、direct URL、保存先pathは診断レスポンスへ含めません。
 
 ### Queue
 

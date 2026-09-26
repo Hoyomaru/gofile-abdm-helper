@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from abdm import ABDMClient
+from abdm import ABDMClient, ABDMError
 try:
     import app as app_module
     app = app_module.app
@@ -520,6 +520,30 @@ class FlaskGuardTests(unittest.TestCase):
     def test_health_available(self):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
+
+    def test_diagnostics_reports_helper_and_abdm_success(self):
+        headers = {"X-GoFile-ABDM": "1"}
+        with patch.object(app_module.ABDMClient, "queues", return_value=[{"id": 1, "name": "Default"}]):
+            response = self.client.get("/api/diagnostics", headers=headers)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["helper"]["ok"])
+        self.assertEqual(payload["helper"]["service"], "gofile-abdm-helper")
+        self.assertTrue(payload["abdm"]["ok"])
+        self.assertEqual(payload["abdm"]["queue_count"], 1)
+
+    def test_diagnostics_reports_abdm_offline_without_failing_helper(self):
+        headers = {"X-GoFile-ABDM": "1"}
+        with patch.object(app_module.ABDMClient, "queues", side_effect=ABDMError("offline")):
+            response = self.client.get("/api/diagnostics", headers=headers)
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["helper"]["ok"])
+        self.assertFalse(payload["abdm"]["ok"])
+        self.assertFalse(payload["abdm"]["connected"])
+        self.assertEqual(payload["abdm"]["queue_count"], 0)
 
     def test_api_requires_marker(self):
         response = self.client.get("/api/abdm/status")

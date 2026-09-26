@@ -196,6 +196,11 @@
       .gab-toast-error { border-color:rgba(239,68,68,.65); }
       .gab-toast-warning { border-color:rgba(245,158,11,.65); }
       .gab-muted { opacity:.68; font-size:.8rem; }
+      .gab-diagnostics { margin:.55rem 0 .75rem; padding:.6rem .7rem; border:1px solid rgba(148,163,184,.22); border-radius:.6rem; font-size:.82rem; }
+      .gab-diagnostics-row { display:flex; align-items:flex-start; gap:.45rem; margin:.24rem 0; }
+      .gab-diagnostics-icon { width:1.1rem; flex:0 0 1.1rem; text-align:center; }
+      .gab-diagnostics-ok { color:#22c55e; }
+      .gab-diagnostics-bad { color:#ef4444; }
       .gab-hidden { display:none !important; }
     `;
     document.head.appendChild(style);
@@ -1033,7 +1038,9 @@
         </div>
       </div>
       <div class="gab-muted">保存先を空欄にすると、ABDMで設定されているデフォルト保存先を使用します。</div>
+      <div id="gab-diagnostics-result" class="gab-diagnostics gab-hidden" role="status" aria-live="polite"></div>
       <div class="gab-actions">
+        ${button('自己診断', 'gab-diagnostics')}
         ${button('閉じる', 'gab-settings-close')}
         ${button('保存', 'gab-settings-save', true)}
       </div>
@@ -1042,6 +1049,8 @@
       const queueSelect = card.querySelector('#gab-queue-select');
       const folder = card.querySelector('#gab-save-folder');
       const name = card.querySelector('#gab-preset-name');
+      const diagnosticsButton = card.querySelector('#gab-diagnostics');
+      const diagnosticsResult = card.querySelector('#gab-diagnostics-result');
       let localPresets = getPresets();
       queueSelect.value = selectedQueueId === null ? '' : String(selectedQueueId);
 
@@ -1077,6 +1086,45 @@
         name.value = '';
         rebuild('');
       });
+
+      diagnosticsButton.addEventListener('click', async () => {
+        diagnosticsButton.disabled = true;
+        diagnosticsButton.textContent = '診断中…';
+        diagnosticsResult.classList.remove('gab-hidden');
+        diagnosticsResult.textContent = 'Helper / ABDM の接続状態を確認しています…';
+        try {
+          const data = await gmRequest('GET', '/api/diagnostics', null, 10000);
+          const helperOk = data?.helper?.ok === true;
+          const abdmOk = data?.abdm?.ok === true;
+          state.connected = abdmOk;
+          updateToolbar();
+
+          const helperVersion = data?.helper?.version ? ' v' + escapeHtml(data.helper.version) : '';
+          const queueText = abdmOk ? 'Queue ' + Number(data?.abdm?.queue_count || 0) + '件' : 'Queueを取得できません';
+          diagnosticsResult.innerHTML =
+            '<div class="gab-diagnostics-row">' +
+              '<span class="gab-diagnostics-icon ' + (helperOk ? 'gab-diagnostics-ok' : 'gab-diagnostics-bad') + '">' + (helperOk ? '✓' : '✕') + '</span>' +
+              '<span><strong>Python Helper' + helperVersion + '</strong><br>' + escapeHtml(data?.helper?.message || (helperOk ? '接続済み' : '確認できません')) + '</span>' +
+            '</div>' +
+            '<div class="gab-diagnostics-row">' +
+              '<span class="gab-diagnostics-icon ' + (abdmOk ? 'gab-diagnostics-ok' : 'gab-diagnostics-bad') + '">' + (abdmOk ? '✓' : '✕') + '</span>' +
+              '<span><strong>AB Download Manager</strong><br>' + escapeHtml(data?.abdm?.message || (abdmOk ? '接続済み' : '接続できません')) + ' ' + escapeHtml(queueText) + '</span>' +
+            '</div>' +
+            (abdmOk ? '' : '<div class="gab-muted" style="margin-top:.45rem">ABDMを起動してからもう一度「自己診断」を実行してください。</div>');
+        } catch (_) {
+          state.connected = false;
+          updateToolbar();
+          diagnosticsResult.innerHTML =
+            '<div class="gab-diagnostics-row">' +
+              '<span class="gab-diagnostics-icon gab-diagnostics-bad">✕</span>' +
+              '<span><strong>Python Helperに接続できません</strong><br>Windowsでは setup-windows.cmd または start-tray.cmd を実行し、trayのHelper状態を確認してください。</span>' +
+            '</div>';
+        } finally {
+          diagnosticsButton.disabled = false;
+          diagnosticsButton.textContent = '自己診断';
+        }
+      });
+
       card.querySelector('#gab-settings-close').addEventListener('click', () => backdrop.remove());
       card.querySelector('#gab-settings-save').addEventListener('click', () => {
         GM_setValue(STORAGE.lastSaveFolder, folder.value.trim());

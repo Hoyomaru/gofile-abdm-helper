@@ -22,6 +22,26 @@ jobs:
       - name: Compile Python sources
         run: python -m py_compile app.py gofile.py abdm.py tray.py
 
+  windows-setup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run one-step setup without launching tray
+        shell: powershell
+        run: .\setup-windows.ps1 -NoLaunch
+      - name: Verify local venv and imports
+        shell: powershell
+        run: |
+          if (-not (Test-Path '.\.venv\Scripts\python.exe')) { throw 'Local venv python missing.' }
+          if (-not (Test-Path '.\.venv\Scripts\pythonw.exe')) { throw 'Local venv pythonw missing.' }
+          .\.venv\Scripts\python.exe -c "import flask, requests, pystray, PIL; print('Windows setup smoke: OK')"
+      - name: Verify setup is idempotent
+        shell: powershell
+        run: .\setup-windows.ps1 -NoLaunch
+
   userscript:
     runs-on: ubuntu-latest
     steps:

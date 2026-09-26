@@ -1,5 +1,12 @@
 # トラブルシューティング
 
+まずGoFileページの **設定 → 自己診断** を実行してください。
+
+- **Python Helper ✓ / ABDM ✓**: localhost連携は正常です。GoFile resolveや個別send errorを確認します。
+- **Python Helper ✓ / ABDM ✕**: Helperは正常です。AB Download Managerの起動とlocalhost APIを確認します。
+- **Python Helperへ接続できません**: `setup-windows.cmd` または `start-tray.cmd`、tray状態、`helper.log`を確認します。
+
+
 GoFile ABDM Helper `v1.0.0` の問題切り分け手順です。
 
 基本は **症状 → 原因候補 → 確認 → 対処** の順で確認します。
