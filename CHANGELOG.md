@@ -6,7 +6,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Windowsで `setup-windows.cmd` を実行するだけでローカル `.venv` 作成、Python依存導入、import検証、tray起動まで行うsetup flowを追加。
+- Helperへ `GET /api/diagnostics` を追加し、credentialやdownload URLを返さずHelper version / ABDM接続 / Queue件数を確認可能にした。
+- UserscriptのSettingsへ **自己診断** を追加し、Helper offlineとABDM offlineを画面上で切り分けられるようにした。
+- setup / diagnosticsの回帰テストを追加。
+
 ### Changed
+
+- `start-tray.cmd` はprojectの `.venv\\Scripts\\pythonw.exe` が存在する場合、それを優先して起動するよう変更。
 
 - GoFile toolbar の通常送信操作を **ABDMへ送信** 1つに統合し、**フォルダ構造を維持** checkbox で structure / flat を切り替える UI へ変更。
 - DOM row matching が必要な場合だけ **一覧から選択** fallback を表示し、通常時の toolbar 情報量を削減。
