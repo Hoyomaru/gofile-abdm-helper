@@ -52,6 +52,11 @@ if (-not (Test-Path $VenvPython)) {
     Write-Host '[1/3] Existing .venv found.'
 }
 
+& $VenvPython -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+if ($LASTEXITCODE -ne 0) {
+    throw 'The existing .venv uses Python older than 3.10. Delete the .venv folder and run setup-windows.cmd again.'
+}
+
 Write-Host '[2/3] Installing/updating dependencies...'
 & $VenvPython -m pip install --disable-pip-version-check -r $Requirements
 if ($LASTEXITCODE -ne 0) {
