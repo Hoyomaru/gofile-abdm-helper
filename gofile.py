@@ -174,6 +174,8 @@ class ResolveResult:
     root_name: str
     root: ResolvedNode
     files: Dict[str, ResolvedFile]
+    node_count: int = 0
+    max_depth: int = 0
 
 
 def parse_content_id(value: str) -> str:
@@ -497,6 +499,7 @@ class GoFileClient:
                 credentials[content_id] = root_password_hash
 
         node_count = 0
+        max_depth_seen = 0
 
         def claim_node() -> None:
             nonlocal node_count
@@ -522,6 +525,8 @@ class GoFileClient:
                 raise TreeLimitExceeded(
                     f"GoFile share exceeds the safe folder depth limit ({MAX_RESOLVE_DEPTH})."
                 )
+            nonlocal max_depth_seen
+            max_depth_seen = max(max_depth_seen, depth)
             claim_node()
             visited.add(folder_id)
             folder_password_hash = credentials.get(folder_id) or parent_password_hash
@@ -659,6 +664,8 @@ class GoFileClient:
             root_name=root.name,
             root=root,
             files=files,
+            node_count=node_count,
+            max_depth=max_depth_seen,
         )
 
 
