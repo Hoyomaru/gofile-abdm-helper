@@ -2,7 +2,7 @@
 
 この文書は GoFile ABDM Helper の Version・コード・ドキュメント・Git tag・GitHub Release を同期するための手順です。
 
-基準日: **2026-09-15**
+基準日: **2026-09-27**
 
 ---
 
@@ -12,6 +12,7 @@
 
 - `v1.0.0`: 2026-09-14 公開の初回正式リリース
 - `v1.1.0`: 2026-09-15 公開済み。reliability / recovery 改善と backward-compatible feature を含む
+- `v1.2.0`: 2026-09-27 release candidate。送信UI簡略化、Windows one-step setup、自己診断を含む
 
 `v1.1.0` の公開済み release metadata:
 
@@ -33,7 +34,7 @@ Custom assets:       なし
 
 https://github.com/Hoyomaru/gofile-abdm-helper/releases
 
-GitHub Actions の `Tests` workflow を導入済みです。`main` push と pull request で Python / Userscript regression test と syntax check を実行します。
+GitHub Actions の `Tests` workflow を導入済みです。`main` push と pull request で Python / Userscript regression test、Windows setup smoke、syntax checkを実行します。Release publish workflowも同じ主要Gateを再実行してからtag/Releaseを作成します。
 
 ---
 

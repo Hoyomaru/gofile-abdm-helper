@@ -6,20 +6,37 @@
 
 ## [Unreleased]
 
+次回Release向けの変更はここへ記録します。
+
+## [1.2.0] - 2026-09-27
+
+GoFile上の送信UIを簡潔にし、Windows導入とHelper/ABDM接続診断を大幅に分かりやすくしたbackward-compatible feature releaseです。
+
 ### Added
 
-- Windowsで `setup-windows.cmd` を実行するだけでローカル `.venv` 作成、Python依存導入、import検証、tray起動まで行うsetup flowを追加。
-- Helperへ `GET /api/diagnostics` を追加し、credentialやdownload URLを返さずHelper version / ABDM接続 / Queue件数を確認可能にした。
-- UserscriptのSettingsへ **自己診断** を追加し、Helper offlineとABDM offlineを画面上で切り分けられるようにした。
-- setup / diagnosticsの回帰テストを追加。
+- Windowsで `setup-windows.cmd` を実行するだけでlocal `.venv` 作成、dependency install、import検証、tray起動まで行うone-step setupを追加。
+- Helperへread-only `GET /api/diagnostics` を追加し、Helper version / ABDM接続 / Queue件数を確認可能にした。
+- Userscript Settingsへ **自己診断** を追加し、Helper offlineとABDM offlineを画面上で切り分け可能にした。
+- setup / diagnosticsの回帰テストとWindows runner上の実setup smoke testを追加。
 
 ### Changed
 
-- `start-tray.cmd` はprojectの `.venv\\Scripts\\pythonw.exe` が存在する場合、それを優先して起動するよう変更。
+- GoFile toolbarの通常送信操作を **ABDMへ送信** 1つに統合し、**フォルダ構造を維持** checkboxでstructure / flatを切り替えるUIへ変更。
+- DOM row matchingが必要な場合だけ **一覧から選択** fallbackを表示し、通常時のtoolbar情報量を削減。
+- toolbar、Settings、送信結果の主要文言を日本語へ統一し、`Uncertain` はUI上で **確認が必要** と説明。
+- `start-tray.cmd` はprojectの `.venv\\Scripts\\pythonw.exe` が存在する場合、それを優先して起動。
+- Windows setupは既存`.venv`内のPython versionも再検証し、3.10未満なら安全に停止。
 
-- GoFile toolbar の通常送信操作を **ABDMへ送信** 1つに統合し、**フォルダ構造を維持** checkbox で structure / flat を切り替える UI へ変更。
-- DOM row matching が必要な場合だけ **一覧から選択** fallback を表示し、通常時の toolbar 情報量を削減。
-- toolbar、Settings、送信結果の主要文言を日本語へ統一し、`Uncertain` は UI 上で **確認が必要** として説明するよう改善。
+### Security
+
+- diagnosticsはABDMのread-only `GET /queues` だけをprobeし、GoFile credential / password / token / direct URL / save pathを返さない。
+- localhost bind、request marker、uncertain POSTのblind retry禁止など既存trust boundaryを維持。
+
+### Validation
+
+- GitHub Actions Python / Userscript regression suite: PASS。
+- Windows runnerでone-step setup、local venv、dependency import、2回目setupのidempotent reuseを確認。
+- 2026-09-27実機でWindows setup / tray / Helper↔ABDM自己診断 / 送信UIを確認。
 
 ## [1.1.0] - 2026-09-15
 

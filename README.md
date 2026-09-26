@@ -1,7 +1,7 @@
 # GoFile ABDM Helper
 
-**現在のリリース:** `v1.1.0`  
-**リリース日:** 2026-09-15
+**現在のリリース:** `v1.2.0`  
+**リリース日:** 2026-09-27
 
 GoFile の既存ページに Userscript の UI を追加し、選択したファイル / フォルダを localhost 専用の Python Helper 経由で **AB Download Manager (ABDM)** へ登録する個人利用向けツールです。
 
@@ -32,8 +32,8 @@ AB Download Manager (127.0.0.1:15151)
 - parent から child への password credential 継承
 - resolve 前や rate limit 中でも使える provisional selection
 - DOM row を対応付けられない場合の **Items** fallback selector
-- **Send to ABDM**: GoFile folder structure を保持して登録
-- **Send Flat**: GoFile folder structure を無視して登録
+- **ABDMへ送信**: 1つのprimary actionから送信
+- **フォルダ構造を維持**: ONでstructure保持、OFFでflat送信
 - ABDM queue 選択
 - Save folder と preset
 - file 単位の送信結果と error detail
@@ -54,6 +54,22 @@ AB Download Manager (127.0.0.1:15151)
 GoFile の Web UI で表示している file / folder を、AB Download Manager の task としてまとめて登録できます。recursive folder、保存先 root、ABDM queue、Flat / structure の選択を GoFile page 上で行えます。
 
 ---
+
+## v1.2.0 について
+
+`v1.2.0` は、日常の送信UIとWindows導入・診断を簡潔にしたbackward-compatible feature releaseです。2026-09-27の正式リリースとして扱います。
+
+- Release: https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.2.0
+- Tag: `v1.2.0`
+- Release title: `GoFile ABDM Helper v1.2.0`
+
+主な更新点:
+
+- **ABDMへ送信** 1操作 + **フォルダ構造を維持** checkboxへ整理
+- `setup-windows.cmd` によるlocal `.venv` one-step setup
+- Settingsの **自己診断** でPython Helper / ABDM / Queue状態を切り分け
+- `start-tray.cmd` のlocal venv優先
+- Windows setupをGitHub Actions上でも実行し、idempotent reuseまで検証
 
 ## v1.1.0 について
 
@@ -77,7 +93,7 @@ GoFile の Web UI で表示している file / folder を、AB Download Manager 
 
 開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、これらは正式な公開 Release ではありません。利用者向けの正式リリース履歴は `v1.0.0` から開始します。
 
-`v1.1.0` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.1.0` tag / Release の source archive を使用してください。**
+`v1.2.0` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.2.0` tag / Release の source archive を使用してください。**
 
 ---
 
