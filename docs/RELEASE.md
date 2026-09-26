@@ -12,7 +12,7 @@
 
 - `v1.0.0`: 2026-09-14 公開の初回正式リリース
 - `v1.1.0`: 2026-09-15 公開済み。reliability / recovery 改善と backward-compatible feature を含む
-- `v1.2.0`: 2026-09-27 release candidate。送信UI簡略化、Windows one-step setup、自己診断を含む
+- `v1.2.0`: 2026-09-27 公開済み。送信UI簡略化、Windows one-step setup、自己診断を含む
 
 `v1.1.0` の公開済み release metadata:
 
@@ -93,6 +93,21 @@ GitHub Release title = GoFile ABDM Helper v1.1.0
 ---
 
 ## 4. 公開済み履歴
+
+### v1.2.0
+
+- published: 2026-09-27
+- tag: `v1.2.0`
+- tag target: `8f19bd750e27adc182251bdee9d008423a87cbcb`
+- title: `GoFile ABDM Helper v1.2.0`
+- draft: false
+- prerelease: false
+- custom assets: なし
+- GitHub-generated source archive: あり
+- Python / Userscript validation: PASS
+- Windows one-step setup smoke / idempotent reuse: PASS
+- 2026-09-27 real-hardware setup / tray / self-diagnostics: PASS
+
 
 ### v1.1.0
 
