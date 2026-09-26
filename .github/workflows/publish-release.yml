@@ -46,6 +46,23 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
+      - name: Record resolved Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          SNAPSHOT="python-dependencies-v${{ steps.version.outputs.version }}.txt"
+          {
+            echo "# $(python --version 2>&1)"
+            echo "# $(python -m pip --version)"
+            python -m pip freeze --all | sort
+          } > "$SNAPSHOT"
+          cat "$SNAPSHOT"
+      - name: Upload dependency snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dependencies-v${{ steps.version.outputs.version }}
+          path: python-dependencies-v${{ steps.version.outputs.version }}.txt
+          if-no-files-found: error
       - name: Run Python tests
         run: python -m unittest discover -s tests -v
       - name: Compile Python sources
@@ -84,6 +101,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Download dependency snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dependencies-v${{ needs.validate.outputs.version }}
+          path: release-assets
       - name: Create or verify tag
         env:
           VERSION: "${{ needs.validate.outputs.version }}"
@@ -112,4 +134,5 @@ jobs:
           else
             gh release create "$TAG" --verify-tag --title "GoFile ABDM Helper $TAG" --notes-file "docs/releases/$TAG.md"
           fi
+          gh release upload "$TAG" "release-assets/python-dependencies-v$VERSION.txt" --clobber
           gh release view "$TAG" --json tagName,isDraft,isPrerelease,url
