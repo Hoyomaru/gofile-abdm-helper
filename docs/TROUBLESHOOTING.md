@@ -7,7 +7,7 @@
 - **Python Helperへ接続できません**: `setup-windows.cmd` または `start-tray.cmd`、tray状態、`helper.log`を確認します。
 
 
-GoFile ABDM Helper `v1.0.0` の問題切り分け手順です。
+GoFile ABDM Helper `v1.2.1` の問題切り分け手順です。
 
 基本は **症状 → 原因候補 → 確認 → 対処** の順で確認します。
 

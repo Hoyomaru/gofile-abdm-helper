@@ -1,6 +1,6 @@
 # アーキテクチャ
 
-GoFile ABDM Helper `v1.2.0` 時点の内部構造、trust boundary、データフローをまとめます。関数単位の詳細、既知問題、開発ルールは [`../DEVELOPMENT.md`](../DEVELOPMENT.md) を参照してください。
+GoFile ABDM Helper `v1.2.1` 時点の内部構造、trust boundary、データフローをまとめます。関数単位の詳細、既知問題、開発ルールは [`../DEVELOPMENT.md`](../DEVELOPMENT.md) を参照してください。
 
 基準日: **2026-09-27**
 

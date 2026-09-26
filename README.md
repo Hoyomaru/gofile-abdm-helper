@@ -1,6 +1,6 @@
 # GoFile ABDM Helper
 
-**現在のリリース:** `v1.2.0`  
+**現在のリリース:** `v1.2.1`  
 **リリース日:** 2026-09-27
 
 GoFile の既存ページに Userscript の UI を追加し、選択したファイル / フォルダを localhost 専用の Python Helper 経由で **AB Download Manager (ABDM)** へ登録する個人利用向けツールです。
@@ -55,6 +55,25 @@ GoFile の Web UI で表示している file / folder を、AB Download Manager 
 
 ---
 
+## v1.2.1 について
+
+`v1.2.1` は、新機能を追加せず既存機能の信頼性・安全性・保守性を改善したbug-fix releaseです。2026-09-27の正式リリースとして扱います。
+
+- Release: https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.2.1
+- Tag: `v1.2.1`
+- Release title: `GoFile ABDM Helper v1.2.1`
+
+主な更新点:
+
+- ABDM接続確認中の連続送信で同じ選択が二重登録され得る競合を修正
+- send preflight中もnavigation / cancelのgeneration guardを適用
+- GoFile resolveにfolder depth 128 / node 100,000の安全上限を追加し、超過時は `422 tree_limit_exceeded`
+- tree serializationとsize / file count集計を反復処理化
+- 大規模・長時間resolveのaggregate-only診断logを追加
+- 二重送信、preflight invalidation、tree limitの回帰テストを追加
+- 正式Releaseに解決済みPython依存スナップショットを添付
+- 2026-09-27 実環境確認完了
+
 ## v1.2.0 について
 
 `v1.2.0` は、日常の送信UIとWindows導入・診断を簡潔にしたbackward-compatible feature releaseです。2026-09-27の正式リリースとして扱います。
@@ -93,7 +112,7 @@ GoFile の Web UI で表示している file / folder を、AB Download Manager 
 
 開発途中では `v1.0.1`～`v1.0.3` という version 名を使った commit / PR が存在しますが、これらは正式な公開 Release ではありません。利用者向けの正式リリース履歴は `v1.0.0` から開始します。
 
-`v1.2.0` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.2.0` tag / Release の source archive を使用してください。**
+`v1.2.1` 公開後の `main` には、次回 Release 向けの未リリース code / test / documentation change が入る場合があります。**公開版そのものを再現したい場合は `v1.2.1` tag / Release の source archive を使用してください。**
 
 ---
 
@@ -154,7 +173,8 @@ POST /start-headless-download
 project/
 ├─ .github/
 │  └─ workflows/
-│     └─ tests.yml              # GitHub Actions regression tests
+│     ├─ tests.yml              # GitHub Actions regression tests
+│     └─ publish-release.yml     # Release gate / tag / GitHub Release
 ├─ gofile-abdm.user.js           # Browser UI / selection / send
 ├─ app.py                        # localhost Flask Helper
 ├─ gofile.py                     # GoFile API / recursive resolve
@@ -194,7 +214,7 @@ Windows で初めて導入する場合は、次の順番で進めるのが簡単
 
 ### Release ZIP（推奨）
 
-1. [`v1.1.0` Release](https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.1.0) を開く
+1. [`v1.2.1` Release](https://github.com/Hoyomaru/gofile-abdm-helper/releases/tag/v1.2.1) を開く
 2. GitHub が表示する **Source code (zip)** をダウンロード
 3. ZIP を任意の固定フォルダへ展開する
 
@@ -204,16 +224,16 @@ Windows で初めて導入する場合は、次の順番で進めるのが簡単
 C:\Tools\gofile-abdm-helper
 ```
 
-`v1.1.0` には exe / installer などの custom asset はありません。GitHub が release tag から自動生成する **Source code (zip)** / **Source code (tar.gz)** を利用します。
+`v1.2.1` の主配布物は GitHub が release tag から自動生成する **Source code (zip)** / **Source code (tar.gz)** です。exe / installer はありません。再現・障害調査用として `python-dependencies-v1.2.1.txt` も Release asset に添付します。
 
-> `v1.1.0` の source archive は公開時点の snapshot です。最新の README は `main` 上のこのページを参照してください。
+> `v1.2.1` の source archive は公開時点の snapshot です。最新の README は `main` 上のこのページを参照してください。
 
 ### Git を使う場合
 
-公開版 `v1.1.0` を取得する場合:
+公開版 `v1.2.1` を取得する場合:
 
 ```bash
-git clone --branch v1.1.0 --depth 1 https://github.com/Hoyomaru/gofile-abdm-helper.git
+git clone --branch v1.2.1 --depth 1 https://github.com/Hoyomaru/gofile-abdm-helper.git
 cd gofile-abdm-helper
 ```
 
@@ -316,7 +336,7 @@ http://127.0.0.1:8765/health
 
 Userscript manager が有効な browser で次を開きます。
 
-https://raw.githubusercontent.com/Hoyomaru/gofile-abdm-helper/v1.1.0/gofile-abdm.user.js
+https://raw.githubusercontent.com/Hoyomaru/gofile-abdm-helper/v1.2.1/gofile-abdm.user.js
 
 通常は Userscript manager のインストール画面が開くので、内容を確認してインストールします。
 

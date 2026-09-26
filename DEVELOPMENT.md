@@ -21,17 +21,18 @@
 - repository: `Hoyomaru/gofile-abdm-helper`
 - default branch: `main`
 - 正式リリース体系: **`v1.0.0` から開始**
-- `VERSION`: `1.2.0`
+- `VERSION`: `1.2.1`
+- `v1.2.1`: **2026-09-27 に公開済み**。送信競合、resolve safety、回帰テスト、release再現性を改善したbug-fix release
 - `v1.2.0`: **2026-09-27 に公開済み**。送信UI簡略化、Windows one-step setup、自己診断を含む
 - `v1.2.0` tag target: `8f19bd750e27adc182251bdee9d008423a87cbcb`
 - `v1.1.0`: **2026-09-15 に公開済み**。reliability / recovery 改善
 - `v1.0.0`: **2026-09-14 に公開済み**の初回正式リリース
-- GitHub Release title: `GoFile ABDM Helper v1.2.0`
+- GitHub Release title: `GoFile ABDM Helper v1.2.1`
 - GitHub Actions / CI: `.github/workflows/tests.yml` を導入済み
 - 専用 build / binary artifact: なし
-- `v1.2.0` の custom Release asset: なし。今後の正式 release は解決済みPython依存スナップショットを追加し、GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を主配布物として維持
+- `v1.2.1` から解決済みPython依存スナップショットをRelease assetとして追加。GitHub-generated `Source code (zip)` / `Source code (tar.gz)` を主配布物として維持
 
-`v1.2.0` 公開後の `main` に追加する code / test / documentation change は `CHANGELOG.md` の `[Unreleased]` で管理します。公開済み tag は移動しません。
+`v1.2.1` 公開後の `main` に追加する code / test / documentation change は `CHANGELOG.md` の `[Unreleased]` で管理します。公開済み tag は移動しません。
 
 ### 過去の version 名について
 
@@ -62,7 +63,7 @@ python -m py_compile app.py gofile.py abdm.py tray.py
 node --check gofile-abdm.user.js
 ```
 
-**v1.0.0 公開時に実機 E2E を新たに実行したとは記録しません。** CI も実サービス / browser / ABDM 実機 E2E の代替ではありません。
+**v1.2.1 は2026-09-27にrelease前の実環境確認を完了しています。** CI は引き続き実サービス / browser / ABDM 実機 E2E の代替ではありません。
 
 未確認として扱うもの:
 

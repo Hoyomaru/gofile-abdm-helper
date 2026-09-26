@@ -8,6 +8,10 @@
 
 次回Release向けの変更はここへ記録します。
 
+## [1.2.1] - 2026-09-27
+
+新機能を追加せず、送信競合、深いGoFile treeの安全性、回帰テスト、診断、release再現性を改善したbug-fix releaseです。
+
 ### Fixed
 
 - ABDM接続確認中に送信操作を連続すると、同じ選択の登録処理が複数開始し得る競合を修正。最初の非同期処理より前にsend operationを予約し、preflight中もgeneration / cancellation guardを適用。
