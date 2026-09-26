@@ -224,6 +224,8 @@ class ResolveTreeLimitRegressionTests(unittest.TestCase):
         with patch("gofile.MAX_RESOLVE_NODES", 3):
             result = make_client(2).resolve("root123")
             self.assertEqual(result.root.file_count, 2)
+            self.assertEqual(result.node_count, 3)
+            self.assertEqual(result.max_depth, 0)
             with self.assertRaises(TreeLimitExceeded) as caught:
                 make_client(3).resolve("root123")
 
