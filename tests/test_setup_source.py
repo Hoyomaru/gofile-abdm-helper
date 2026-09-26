@@ -15,6 +15,11 @@ class WindowsSetupSourceTests(unittest.TestCase):
         self.assertIn("requirements.txt", source)
         self.assertIn("Python 3.10+", source)
 
+    def test_existing_venv_python_version_is_revalidated(self):
+        source = (ROOT / "setup-windows.ps1").read_text(encoding="utf-8")
+        self.assertIn("sys.version_info >= (3,10)", source)
+        self.assertIn("existing .venv uses Python older than 3.10", source)
+
     def test_setup_launches_tray_from_local_venv(self):
         source = (ROOT / "setup-windows.ps1").read_text(encoding="utf-8")
         self.assertIn("'Scripts\\pythonw.exe'", source)
