@@ -464,11 +464,13 @@ class UserscriptStaticTests(unittest.TestCase):
     def test_helper_only_abdm_flow(self):
         self.assertIn("http://127.0.0.1:8765", self.source)
         self.assertNotIn("localhost:15151", self.source)
-        self.assertIn("Send Flat", self.source)
+        self.assertIn('id="gab-preserve-structure"', self.source)
+        self.assertIn("sendSelected(false, preserveStructure)", self.source)
+        self.assertNotIn("gab-send-flat", self.source)
         self.assertIn("preserve_structure: operation.preserveStructure", self.source)
         self.assertIn("/api/abdm/queues", self.source)
         self.assertIn("queue_id: operation.queueId", self.source)
-        self.assertIn("Default (ABDM)", self.source)
+        self.assertIn("デフォルト（ABDM）", self.source)
 
     def test_selection_fallback_supports_current_and_legacy_row_ids(self):
         self.assertIn("data-content-id", self.source)
@@ -477,8 +479,9 @@ class UserscriptStaticTests(unittest.TestCase):
         self.assertIn("data-uuid", self.source)
         self.assertIn("visibleContentIds", self.source)
 
-    def test_items_selector_is_always_available(self):
-        self.assertIn("items.classList.remove('gab-hidden')", self.source)
+    def test_items_selector_is_available_only_when_fallback_is_needed(self):
+        self.assertIn("const fallbackNeeded = Boolean(state.root) && state.unmatched > 0", self.source)
+        self.assertIn("items.classList.toggle('gab-hidden', !fallbackNeeded)", self.source)
 
     def test_select_all_has_resolved_tree_fallback(self):
         self.assertIn("if (!nodes.length && state.root) nodes = state.root.children || []", self.source)
