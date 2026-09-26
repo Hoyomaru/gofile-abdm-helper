@@ -702,9 +702,10 @@
     for (const item of items) {
       const wrap = document.createElement('label');
       wrap.className = 'gab-check-wrap';
-      wrap.title = 'Select visible GoFile item (will be matched after resolve)';
+      wrap.title = '表示中のGoFile項目を選択（読み込み後に内容を確認します）';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', '表示中のGoFile項目を選択');
       checkbox.className = CHECKBOX_CLASS;
       checkbox.dataset.gabContentId = item.id;
       checkbox.checked = state.provisionalSelectedIds.has(item.id);
@@ -770,9 +771,12 @@
       used.add(row);
       const wrap = document.createElement('label');
       wrap.className = 'gab-check-wrap';
-      wrap.title = node.type === 'folder' ? `Select folder recursively: ${node.name}` : `Select file: ${node.name}`;
+      wrap.title = node.type === 'folder' ? `フォルダを再帰的に選択: ${node.name}` : `ファイルを選択: ${node.name}`;
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', node.type === 'folder'
+        ? `フォルダを再帰的に選択: ${node.name}`
+        : `ファイルを選択: ${node.name}`);
       checkbox.className = CHECKBOX_CLASS;
       checkbox.dataset.gabKey = node.key;
       checkbox.checked = state.selectedKeys.has(node.key);
