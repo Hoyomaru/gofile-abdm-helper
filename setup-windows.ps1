@@ -67,7 +67,8 @@ if ($LASTEXITCODE -ne 0) {
 if (-not $NoLaunch) {
     Write-Host ''
     Write-Host 'Starting tray launcher...'
-    Start-Process -FilePath $VenvPythonw -ArgumentList @($Tray) -WorkingDirectory $Root
+    $trayArgument = '"' + $Tray + '"'
+    Start-Process -FilePath $VenvPythonw -ArgumentList @($trayArgument) -WorkingDirectory $Root
 }
 
 Write-Host ''
