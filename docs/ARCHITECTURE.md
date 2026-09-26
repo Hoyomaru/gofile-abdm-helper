@@ -377,6 +377,7 @@ external Helper が port 8765 で稼働している場合は `Running (external)
 - password challenge → target context + full resolve retry
 - access denied → stop
 - resolve tree は nested folder depth 128 / node 100,000 を安全上限とし、超過時は `422 tree_limit_exceeded`
+- fresh resolve が 10,000 node 以上または30秒以上の場合だけ、files / nodes / max depth / duration の集計値をwarning logへ記録。URL・ID・credential・direct URL・保存先は記録しない
 - generic upstream error → 502
 - unexpected error → 500 without secret details
 
