@@ -1,8 +1,8 @@
 # アーキテクチャ
 
-GoFile ABDM Helper `v1.0.0` の内部構造、trust boundary、データフローをまとめます。関数単位の詳細、既知問題、開発ルールは [`../DEVELOPMENT.md`](../DEVELOPMENT.md) を参照してください。
+GoFile ABDM Helper `v1.2.0` 時点の内部構造、trust boundary、データフローをまとめます。関数単位の詳細、既知問題、開発ルールは [`../DEVELOPMENT.md`](../DEVELOPMENT.md) を参照してください。
 
-基準日: **2026-09-14**
+基準日: **2026-09-27**
 
 ---
 
@@ -376,6 +376,7 @@ external Helper が port 8765 で稼働している場合は `Running (external)
 - 429 → immediate stop
 - password challenge → target context + full resolve retry
 - access denied → stop
+- resolve tree は nested folder depth 128 / node 100,000 を安全上限とし、超過時は `422 tree_limit_exceeded`
 - generic upstream error → 502
 - unexpected error → 500 without secret details
 
@@ -383,13 +384,13 @@ external Helper が port 8765 で稼働している場合は `Running (external)
 
 1 file failure で remaining files を止めません。
 
-一方、`POST /start-headless-download` が ABDM 側で成功したあと response だけ失われた場合、現在 idempotency check はありません。automatic blind retry はしませんが、manual `Retry Failed` では duplicate task の可能性があります。
+一方、`POST /start-headless-download` が ABDM 側で成功したあと response だけ失われた場合、現在 idempotency check はありません。この結果は `uncertain` として definite failure から分離し、通常の `Retry Failed` 対象には含めません。再送前に ABDM 側の一覧確認が必要です。
 
-### Browser navigation
+### Browser navigation / send state
 
 resolve response は generation guard で stale state を破棄します。
 
-send loop には同等の navigation cancellation guard がないため、send 中 navigation は [`../DEVELOPMENT.md`](../DEVELOPMENT.md) の known issue を参照してください。
+send は最初の非同期 preflight より前に operation を予約し、`state.sending` と generation guard を有効化します。ABDM 接続確認中の二重操作、send 中 navigation、manual Load、Cancel Send は同じ active operation を基準に無効化され、古い response は新しい page state を更新しません。
 
 ---
 
