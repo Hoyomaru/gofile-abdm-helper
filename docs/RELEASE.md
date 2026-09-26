@@ -160,6 +160,12 @@ CI は real GoFile / ABDM / Windows GUI の E2E を代替しません。
 
 候補:
 
+- fresh Windows folderで `setup-windows.cmd` を実行し、`.venv` 作成 / dependency install / tray起動
+- 空白を含む展開先pathでもtrayが起動
+- `start-tray.cmd` が作成済み `.venv` を再利用
+- Settings → **自己診断** で Helper version / ABDM接続 / Queue件数を確認
+- ABDM停止時にHelper正常 / ABDM異常を分けて表示
+- Helper停止時にsetup/tray起動案内を表示
 - Helper `/health`
 - ABDM `/queues` connection
 - 通常 GoFile share resolve
@@ -188,6 +194,8 @@ CI は real GoFile / ABDM / Windows GUI の E2E を代替しません。
 - [ ] Helper bind は `127.0.0.1`
 - [ ] ABDM target は `127.0.0.1:15151`
 - [ ] `/api/*` marker guard が有効
+- [ ] `/api/diagnostics` がpassword / token / direct URL / save pathを返さない
+- [ ] ABDM offline時もdiagnosticsでHelper正常とABDM異常を分離できる
 - [ ] JSON mutation guard が有効
 - [ ] `/api/abdm/send` は JSON object 以外を拒否
 - [ ] GoFile URL / content ID validation が有効
